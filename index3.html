@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPEN PENGU 量化交易模擬器</title>
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif; background: #0d0d0d; color: #e0e0e0; min-height: 100vh; }
+        .header { background: linear-gradient(180deg, #1a1a2e 0%, #0d0d0d 100%); padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #2a2a3e; }
+        .logo { display: flex; align-items: center; gap: 10px; }
+        .logo h1 { font-size: 20px; background: linear-gradient(90deg, #26a69a, #4dd0e1); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .pengu-icon { font-size: 28px; }
+        .wallet-info { display: flex; gap: 30px; }
+        .balance-item { text-align: right; }
+        .balance-label { font-size: 11px; color: #888; text-transform: uppercase; }
+        .balance-value { font-size: 18px; font-weight: 600; }
+        .balance-value.positive { color: #26a69a; }
+        .balance-value.negative { color: #ef5350; }
+        .main-container { display: grid; grid-template-columns: 1fr 320px; gap: 15px; padding: 15px; height: calc(100vh - 70px); }
+        .chart-section { display: flex; flex-direction: column; gap: 15px; }
+        .chart-header { background: #1a1a2e; padding: 12px 20px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .symbol-info { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+        .symbol-name { font-size: 24px; font-weight: 700; }
+        .symbol-price { font-size: 28px; font-weight: 700; }
+        .price-change { font-size: 14px; padding: 4px 8px; border-radius: 4px; }
+        .price-change.up { background: rgba(38, 166, 154, 0.2); color: #26a69a; }
+        .price-change.down { background: rgba(239, 83, 80, 0.2); color: #ef5350; }
+        .timeframes { display: flex; gap: 5px; }
+        .tf-btn { background: transparent; border: 1px solid #2a2a3e; color: #888; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; transition: all 0.2s; }
+        .tf-btn:hover, .tf-btn.active { background: #26a69a; border-color: #26a69a; color: #fff; }
+        .chart-container { background: #1a1a2e; border-radius: 8px; flex: 1; min-height: 400px; }
+        .order-panel { background: #1a1a2e; border-radius: 8px; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
+        .panel-title { font-size: 14px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+        .order-type-tabs { display: flex; gap: 5px; }
+        .order-tab { flex: 1; padding: 12px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s; }
+        .order-tab.buy { background: rgba(38, 166, 154, 0.2); color: #26a69a; }
+        .order-tab.buy.active { background: #26a69a; color: #fff; }
+        .order-tab.sell { background: rgba(239, 83, 80, 0.2); color: #ef5350; }
+        .order-tab.sell.active { background: #ef5350; color: #fff; }
+        .input-group { margin-bottom: 15px; }
+        .input-group label { display: block; font-size: 12px; color: #888; margin-bottom: 6px; }
+        .input-group input, .input-group select { width: 100%; background: #0d0d0d; border: 1px solid #2a2a3e; color: #e0e0e0; padding: 12px; border-radius: 6px; font-size: 14px; }
+        .input-group input:focus { outline: none; border-color: #26a69a; }
+        .leverage-slider { display: flex; align-items: center; gap: 15px; }
+        .leverage-slider input[type="range"] { flex: 1; -webkit-appearance: none; height: 6px; background: #2a2a3e; border-radius: 3px; }
+        .leverage-slider input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: #4dd0e1; border-radius: 50%; cursor: pointer; }
+        .leverage-value { font-size: 18px; font-weight: 700; color: #4dd0e1; min-width: 50px; }
+        .order-summary { background: #0d0d0d; padding: 15px; border-radius: 6px; margin-bottom: 15px; }
+        .summary-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; }
+        .summary-row:last-child { margin-bottom: 0; }
+        .summary-row .label { color: #888; }
+        .summary-row .value { color: #e0e0e0; }
+        .order-btn { width: 100%; padding: 15px; border: none; border-radius: 6px; font-size: 16px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+        .order-btn.buy { background: linear-gradient(135deg, #26a69a, #00897b); color: #fff; }
+        .order-btn.sell { background: linear-gradient(135deg, #ef5350, #c62828); color: #fff; }
+        .order-btn:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(0,0,0,0.3); }
+        .positions-section { background: #1a1a2e; border-radius: 8px; padding: 20px; flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+        .positions-list { flex: 1; overflow-y: auto; }
+        .position-item { background: #0d0d0d; padding: 15px; border-radius: 6px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+        .position-info h4 { font-size: 14px; margin-bottom: 5px; }
+        .position-info span { font-size: 12px; color: #888; }
+        .position-pnl { text-align: right; }
+        .pnl-value { font-size: 16px; font-weight: 700; }
+        .pnl-value.positive { color: #26a69a; }
+        .pnl-value.negative { color: #ef5350; }
+        .pnl-percent { font-size: 12px; color: #888; }
+        .close-btn { background: #2a2a3e; border: none; color: #e0e0e0; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-left: 10px; }
+        .close-btn:hover { background: #ef5350; }
+        .history-section { background: #1a1a2e; border-radius: 8px; padding: 15px; max-height: 200px; overflow-y: auto; }
+        .history-item { display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid #2a2a3e; font-size: 13px; }
+        .history-item:last-child { border-bottom: none; }
+        .history-type.buy { color: #26a69a; }
+        .history-type.sell { color: #ef5350; }
+        .stats-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 15px; }
+        .stat-card { background: #1a1a2e; padding: 15px; border-radius: 8px; text-align: center; }
+        .stat-label { font-size: 11px; color: #888; text-transform: uppercase; margin-bottom: 5px; }
+        .stat-value { font-size: 20px; font-weight: 700; }
+        .empty-state { text-align: center; padding: 40px; color: #888; }
+        .empty-state-icon { font-size: 48px; margin-bottom: 15px; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0d0d0d; }
+        ::-webkit-scrollbar-thumb { background: #2a2a3e; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #3a3a4e; }
+        .notification { position: fixed; top: 20px; right: 20px; background: #1a1a2e; border-left: 4px solid #26a69a; padding: 15px 20px; border-radius: 6px; box-shadow: 0 5px 20px rgba(0,0,0,0.3); transform: translateX(400px); transition: transform 0.3s ease; z-index: 1000; }
+        .notification.show { transform: translateX(0); }
+        .notification.error { border-left-color: #ef5350; }
+        .loading { opacity: 0.5; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo">
+            <span class="pengu-icon">🐧</span>
+            <h1>OPEN PENGU 量化交易模擬器</h1>
+        </div>
+        <div class="wallet-info">
+            <div class="balance-item">
+                <div class="balance-label">模擬餘額</div>
+                <div class="balance-value" id="wallet-balance">$10,000.00</div>
+            </div>
+            <div class="balance-item">
+                <div class="balance-label">總盈虧</div>
+                <div class="balance-value" id="total-pnl">$0.00</div>
+            </div>
+            <div class="balance-item">
+                <div class="balance-label">持倉數</div>
+                <div class="balance-value" id="position-count">0</div>
+            </div>
+        </div>
+    </div>
+    <div class="main-container">
+        <div class="chart-section">
+            <div class="stats-bar">
+                <div class="stat-card">
+                    <div class="stat-label">24h 成交量</div>
+                    <div class="stat-value" id="volume">載入中...</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">24h 漲跌幅</div>
+                    <div class="stat-value" id="price-change-stat">載入中...</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">最高價</div>
+                    <div class="stat-value" id="high-price">載入中...</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">最低價</div>
+                    <div class="stat-value" id="low-price">載入中...</div>
+                </div>
+            </div>
+            <div class="chart-header">
+                <div class="symbol-info">
+                    <span class="symbol-name" id="symbol-name">BTC/USDT</span>
+                    <span class="symbol-price" id="current-price">載入中...</span>
+                    <span class="price-change up" id="price-change">+0.00%</span>
+                </div>
+                <div class="timeframes">
+                    <button class="tf-btn" data-tf="1m">1m</button>
+                    <button class="tf-btn" data-tf="5m">5m</button>
+                    <button class="tf-btn active" data-tf="15m">15m</button>
+                    <button class="tf-btn" data-tf="1h">1H</button>
+                    <button class="tf-btn" data-tf="4h">4H</button>
+                    <button class="tf-btn" data-tf="1d">1D</button>
+                </div>
+            </div>
+            <div class="chart-container" id="chart"></div>
+            <div class="history-section">
+                <div class="panel-title">📋 交易紀錄</div>
+                <div id="trade-history">
+                    <div class="empty-state"><div class="empty-state-icon">📊</div><div>尚無交易紀錄</div></div>
+                </div>
+            </div>
+        </div>
+        <div class="order-panel">
+            <div class="panel-title">⚡ 下單</div>
+            <div class="order-type-tabs">
+                <button class="order-tab buy active" data-type="buy">做多 (Long)</button>
+                <button class="order-tab sell" data-type="sell">做空 (Short)</button>
+            </div>
+            <div class="input-group">
+                <label>交易對</label>
+                <select id="symbol">
+                    <option value="BTCUSDT">BTC/USDT 比特幣</option>
+                    <option value="ETHUSDT">ETH/USDT 以太坊</option>
+                    <option value="SOLUSDT">SOL/USDT Solana</option>
+                    <option value="ADAUSDT">ADA/USDT 卡爾達諾</option>
+                    <option value="PENGUUSDT">PENGU/USDT Pudgy Penguin</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label>開倉數量 (USDT)</label>
+                <input type="number" id="order-amount" placeholder="輸入金額" value="100">
+            </div>
+            <div class="input-group">
+                <label>槓桿倍數</label>
+                <div class="leverage-slider">
+                    <input type="range" id="leverage" min="1" max="125" value="10">
+                    <span class="leverage-value" id="leverage-value">10x</span>
+                </div>
+            </div>
+            <div class="order-summary">
+                <div class="summary-row"><span class="label">開倉價格</span><span class="value" id="entry-price">$--</span></div>
+                <div class="summary-row"><span class="label">預估數量</span><span class="value" id="position-size">--</span></div>
+                <div class="summary-row"><span class="label">槓桿</span><span class="value" id="leverage-display">10x</span></div>
+            </div>
+            <button class="order-btn buy" id="submit-order">🔓 開倉 (做多)</button>
+            <div class="positions-section">
+                <div class="panel-title">📁 當前持倉</div>
+                <div class="positions-list" id="positions-list">
+                    <div class="empty-state"><div class="empty-state-icon">📭</div><div>尚無持倉</div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="notification" id="notification"><span id="notification-text"></span></div>
+    <script>
+        let wallet = { balance: 10000, positions: [], trades: [] };
+        let currentPrice = 0;
+        let currentSymbol = 'BTCUSDT';
+        let orderType = 'buy';
+        let leverage = 10;
+        let lastPrice = 0;
+        let updateInterval = null;
+
+        const symbolNames = {
+            'BTCUSDT': 'BTC/USDT',
+            'ETHUSDT': 'ETH/USDT', 
+            'SOLUSDT': 'SOL/USDT',
+            'ADAUSDT': 'ADA/USDT',
+            'PENGUUSDT': 'PENGU/USDT'
+        };
+
+        const chart = LightweightCharts.createChart(document.getElementById('chart'), {
+            layout: { background: { color: '#1a1a2e' }, textColor: '#888' },
+            grid: { vertLines: { color: '#2a2a3e' }, horzLines: { color: '#2a2a3e' } },
+            crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+            timeScale: { borderColor: '#2a2a3e' },
+            rightPriceScale: { borderColor: '#2a2a3e' },
+        });
+        const candleSeries = chart.addCandlestickSeries({
+            upColor: '#26a69a', downColor: '#ef5350', borderDownColor: '#ef5350', borderUpColor: '#26a69a', wickDownColor: '#ef5350', wickUpColor: '#26a69a'
+        });
+
+        // Fetch Real-Time Price
+        async function fetchPrice(symbol) {
+            try {
+                const res = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbol=' + symbol);
+                const data = await res.json();
+                currentPrice = parseFloat(data.lastPrice);
+                const change = parseFloat(data.priceChangePercent);
+                
+                document.getElementById('symbol-name').textContent = symbolNames[symbol] || symbol;
+                document.getElementById('current-price').textContent = '$' + currentPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                
+                const changeEl = document.getElementById('price-change');
+                changeEl.textContent = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
+                changeEl.className = 'price-change ' + (change >= 0 ? 'up' : 'down');
+                
+                document.getElementById('volume').textContent = '$' + (parseFloat(data.quoteVolume) / 1e9).toFixed(2) + 'B';
+                document.getElementById('price-change-stat').textContent = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
+                document.getElementById('price-change-stat').style.color = change >= 0 ? '#26a69a' : '#ef5350';
+                document.getElementById('high-price').textContent = '$' + parseFloat(data.highPrice).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                document.getElementById('low-price').textContent = '$' + parseFloat(data.lowPrice).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                
+                updatePriceDisplay();
+                return currentPrice;
+            } catch(e) { 
+                console.error(e); 
+                showNotification('無法獲取價格數據', true);
+                return 0; 
+            }
+        }
+
+        // Fetch K-Line Data
+        async function fetchKlines(symbol, interval = '15m', limit = 100) {
+            try {
+                const res = await fetch('https://api.binance.com/api/v3/klines?symbol=' + symbol + '&interval=' + interval + '&limit=' + limit);
+                const data = await res.json();
+                const candles = data.map(k => ({
+                    time: Math.floor(k[0]/1000),
+                    open: parseFloat(k[1]), high: parseFloat(k[2]), low: parseFloat(k[3]), close: parseFloat(k[4])
+                }));
+                candleSeries.setData(candles);
+                if (candles.length > 0) currentPrice = candles[candles.length-1].close;
+            } catch(e) { console.error(e); }
+        }
+
+        // Update Price Every 3 Seconds
+        async function updatePrice() {
+            const newPrice = await fetchPrice(currentSymbol);
+            if (currentPrice > 0 && newPrice !== currentPrice && lastPrice > 0) {
+                candleSeries.update({
+                    time: Math.floor(Date.now()/1000),
+                    open: lastPrice,
+                    high: Math.max(currentPrice, newPrice),
+                    low: Math.min(currentPrice, newPrice),
+                    close: newPrice
+                });
+            }
+            if (currentPrice > 0) lastPrice = currentPrice;
+            currentPrice = newPrice || currentPrice;
+            updatePositions();
+        }
+
+        // Change Symbol
+        async function changeSymbol(symbol) {
+            if (symbol === currentSymbol) return;
+            
+            currentSymbol = symbol;
+            document.getElementById('chart').classList.add('loading');
+            
+            // Clear old interval
+            if (updateInterval) clearInterval(updateInterval);
+            
+            await fetchPrice(symbol);
+            await fetchKlines(symbol);
+            
+            // Start new interval
+            updateInterval = setInterval(updatePrice, 3000);
+            
+            document.getElementById('chart').classList.remove('loading');
+            showNotification('已切換至 ' + (symbolNames[symbol] || symbol));
+        }
+
+        function updatePriceDisplay() {
+            document.getElementById('entry-price').textContent = '$' + currentPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            const amount = parseFloat(document.getElementById('order-amount').value) || 0;
+            const symbolBase = currentSymbol.replace('USDT', '');
+            const size = currentPrice > 0 ? (amount / currentPrice).toFixed(6) : '0';
+            document.getElementById('position-size').textContent = size + ' ' + symbolBase;
+        }
+
+        document.querySelectorAll('.order-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.order-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                orderType = tab.dataset.type;
+                const btn = document.getElementById('submit-order');
+                btn.className = 'order-btn ' + orderType;
+                btn.textContent = orderType === 'buy' ? '🔓 開倉 (做多)' : '🔒 開倉 (做空)';
+            });
+        });
+
+        document.getElementById('symbol').addEventListener('change', (e) => {
+            changeSymbol(e.target.value);
+        });
+
+        document.getElementById('leverage').addEventListener('input', (e) => {
+            leverage = parseInt(e.target.value);
+            document.getElementById('leverage-value').textContent = leverage + 'x';
+            document.getElementById('leverage-display').textContent = leverage + 'x';
+        });
+
+        document.getElementById('order-amount').addEventListener('input', updatePriceDisplay);
+
+        document.getElementById('submit-order').addEventListener('click', () => {
+            const amount = parseFloat(document.getElementById('order-amount').value);
+            if (!amount || amount <= 0) { showNotification('請輸入有效的金額', true); return; }
+            if (amount > wallet.balance) { showNotification('餘額不足！', true); return; }
+            
+            const position = {
+                id: Date.now(), 
+                symbol: currentSymbol, 
+                symbolName: symbolNames[currentSymbol] || currentSymbol,
+                type: orderType,
+                amount: amount, 
+                leverage: leverage, 
+                entryPrice: currentPrice,
+                size: amount * leverage / currentPrice, 
+                timestamp: new Date().toLocaleString()
+            };
+            wallet.balance -= amount;
+            wallet.positions.push(position);
+            wallet.trades.unshift({ 
+                type: orderType, 
+                symbol: symbolNames[currentSymbol] || currentSymbol, 
+                amount: amount, 
+                price: currentPrice, 
+                time: new Date().toLocaleTimeString() 
+            });
+            updateWalletDisplay();
+            updatePositionsList();
+            updateTradeHistory();
+            showNotification(orderType === 'buy' ? '✅ 做多倉位建立成功！' : '✅ 做空倉位建立成功！');
+        });
+
+        function closePosition(id) {
+            const position = wallet.positions.find(p => p.id === id);
+            if (!position) return;
+            const pnl = calculatePnL(position);
+            wallet.balance += position.amount + pnl;
+            wallet.positions = wallet.positions.filter(p => p.id !== id);
+            wallet.trades.unshift({ 
+                type: 'close', 
+                symbol: position.symbolName, 
+                amount: position.amount, 
+                price: currentPrice, 
+                pnl: pnl, 
+                time: new Date().toLocaleTimeString() 
+            });
+            updateWalletDisplay();
+            updatePositionsList();
+            updateTradeHistory();
+            showNotification('✅ 平倉成功！盈虧: $' + pnl.toFixed(2));
+        }
+
+        function calculatePnL(position) {
+            const priceDiff = currentPrice - position.entryPrice;
+            const direction = position.type === 'buy' ? 1 : -1;
+            return priceDiff * position.size * direction;
+        }
+
+        function updateWalletDisplay() {
+            document.getElementById('wallet-balance').textContent = '$' + wallet.balance.toLocaleString();
+            document.getElementById('position-count').textContent = wallet.positions.length;
+            let totalUnrealized = 0;
+            wallet.positions.forEach(p => { totalUnrealized += calculatePnL(p); });
+            const pnlEl = document.getElementById('total-pnl');
+            pnlEl.textContent = (totalUnrealized >= 0 ? '+' : '') + '$' + totalUnrealized.toFixed(2);
+            pnlEl.className = 'balance-value ' + (totalUnrealized >= 0 ? 'positive' : 'negative');
+        }
+
+        function updatePositions() {
+            if (wallet.positions.length > 0) { updatePositionsList(); updateWalletDisplay(); }
+        }
+
+        function updatePositionsList() {
+            const container = document.getElementById('positions-list');
+            if (wallet.positions.length === 0) { container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><div>尚無持倉</div></div>'; return; }
+            container.innerHTML = wallet.positions.map(p => {
+                const pnl = calculatePnL(p);
+                const pnlPercent = currentPrice > 0 ? ((currentPrice - p.entryPrice) / p.entryPrice * 100 * (p.type === 'buy' ? 1 : -1)).toFixed(2) : '0.00';
+                const symbolBase = p.symbol.replace('USDT', '');
+                return '<div class="position-item"><div class="position-info"><h4>' + p.symbolName + ' <span style="color: ' + (p.type === 'buy' ? '#26a69a' : '#ef5350') + '">' + (p.type === 'buy' ? '多' : '空') + '</span></h4><span>開倉價: $' + p.entryPrice.toLocaleString() + ' | 槓桿: ' + p.leverage + 'x | 數量: ' + p.size.toFixed(4) + ' ' + symbolBase + '</span></div><div class="position-pnl"><div class="pnl-value ' + (pnl >= 0 ? 'positive' : 'negative') + '">' + (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2) + '</div><div class="pnl-percent">' + pnlPercent + '%</div></div><button class="close-btn" onclick="closePosition(' + p.id + ')">平倉</button></div>';
+            }).join('');
+        }
+
+        function updateTradeHistory() {
+            const container = document.getElementById('trade-history');
+            if (wallet.trades.length === 0) { container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📊</div><div>尚無交易紀錄</div></div>'; return; }
+            container.innerHTML = wallet.trades.slice(0, 10).map(t => {
+                if (t.type === 'close') return '<div class="history-item"><span><span class="history-type">平倉</span> ' + t.symbol + '</span><span>$' + t.price.toLocaleString() + '</span><span style="color: ' + (t.pnl >= 0 ? '#26a69a' : '#ef5350') + '">' + (t.pnl >= 0 ? '+' : '') + '$' + t.pnl.toFixed(2) + '</span></div>';
+                return '<div class="history-item"><span><span class="history-type ' + t.type + '">' + (t.type === 'buy' ? '做多' : '做空') + '</span> ' + t.symbol + '</span><span>$' + t.price.toLocaleString() + '</span><span>$' + t.amount + '</span></div>';
+            }).join('');
+        }
+
+        function showNotification(message, isError = false) {
+            const notification = document.getElementById('notification');
+            document.getElementById('notification-text').textContent = message;
+            notification.className = 'notification show' + (isError ? ' error' : '');
+            setTimeout(() => { notification.className = 'notification'; }, 3000);
+        }
+
+        document.querySelectorAll('.tf-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                await fetchKlines(currentSymbol, btn.dataset.tf);
+                showNotification('已切換至 ' + btn.dataset.tf + ' 週期');
+            });
+        });
+
+        // Initialize
+        fetchPrice('BTCUSDT');
+        fetchKlines('BTCUSDT');
+        updateInterval = setInterval(updatePrice, 3000);
+        updateWalletDisplay();
+    </script>
+</body>
+</html>
