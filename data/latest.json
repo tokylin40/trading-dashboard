@@ -1,0 +1,12 @@
+{
+  "generated_at": null,
+  "market": null,
+  "strategy": {
+    "connected": false
+  },
+  "onchain": {
+    "connected": false,
+    "reason": "Waiting for first GitHub Action run"
+  },
+  "history_count": 0
+}

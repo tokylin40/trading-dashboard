@@ -1,0 +1,12 @@
+{
+  "generated_at": null,
+  "methodology": {
+    "scope": "Technical gate only",
+    "important_limit": "Run GitHub Action 'Build Signal Backtest' to populate results."
+  },
+  "summary_by_mode": {},
+  "summary_by_state": {},
+  "state_change_count": 0,
+  "daily_sample_count": 0,
+  "recent_state_changes": []
+}
