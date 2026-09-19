@@ -1,37 +1,23 @@
-name: Update Crypto Dashboard Data
-
+name: Update Keda Dashboard Data
 on:
+  workflow_dispatch:
   schedule:
     - cron: "15 * * * *"
-  workflow_dispatch:
-
 permissions:
   contents: write
-
 jobs:
-  update-data:
+  update:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Install dependencies
-        run: pip install requests beautifulsoup4
-
-      - name: Collect cloud data
-        env:
-          GLASSNODE_API_KEY: ${{ secrets.GLASSNODE_API_KEY }}
-        run: python scripts/collect_cloud_data.py
-
-      - name: Commit updated data
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - run: pip install -r requirements.txt
+      - run: python scripts/update_keda_data.py
+      - run: |
+          git config user.name "keda-regime-bot"
+          git config user.email "actions@users.noreply.github.com"
           git add data/
-          git diff --cached --quiet || git commit -m "chore: update crypto dashboard data"
+          git diff --cached --quiet || git commit -m "chore: refresh market datasets"
           git push

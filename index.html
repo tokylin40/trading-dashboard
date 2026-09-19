@@ -1,40 +1,73 @@
-<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>科大 Crypto｜牛熊週期雷達</title><style>
-:root{--bg:#061019;--p:#0b1723;--l:#1d354a;--t:#eef6fd;--m:#9db0c1;--g:#34d399;--y:#fbbf24;--r:#fb7185;--b:#60a5fa}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--t);font-family:Inter,system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif;font-size:16px}.app{max-width:1580px;margin:auto;padding:22px}.top{display:flex;justify-content:space-between;gap:18px;align-items:center}.brand h1{margin:0;font-size:25px}.sub{font-size:14px;color:var(--m);margin-top:5px}.price{text-align:right}.price b{font-size:31px}.price small{display:block;color:var(--m);font-size:12px}.grid{display:grid;gap:16px}.g2{grid-template-columns:1.1fr .9fr}.panel{background:linear-gradient(180deg,#0d1c2a,#08121d);border:1px solid var(--l);border-radius:17px;overflow:hidden;margin-top:16px}.ph{display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--l)}.ph h2{font-size:18px;margin:0}.pb{padding:18px}.hero{display:grid;grid-template-columns:1.25fr .75fr;gap:14px}.state{padding:21px;border:1px solid rgba(52,211,153,.28);background:rgba(52,211,153,.055);border-radius:14px}.big{font-size:38px;font-weight:1000}.phase{font-size:19px;font-weight:900;color:var(--g);margin-top:4px}.desc{font-size:14px;color:#bac8d4;line-height:1.7;margin-top:12px}.scorebox{display:grid;grid-template-columns:1fr 1fr;gap:10px}.score{padding:16px;border:1px solid var(--l);border-radius:13px;background:#07131e}.score span{font-size:12px;color:var(--m)}.score b{display:block;font-size:30px;margin-top:5px}.score small{font-size:11px;color:var(--m)}.weights{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}.wc{padding:14px;border:1px solid var(--l);border-radius:12px;background:#081521}.wc h3{margin:0 0 7px;font-size:15px}.wc .num{font-size:28px;font-weight:950}.wc .meta{font-size:11px;color:var(--m);line-height:1.5}.bar{height:10px;background:#142536;border-radius:99px;overflow:hidden;margin-top:10px}.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--b),var(--g))}table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:12px 10px;border-bottom:1px solid #173047;text-align:left}th{font-size:12px;color:var(--m)}.pct{font-size:17px;font-weight:900}.good{color:var(--g)}.watch{color:var(--y)}.risk{color:var(--r)}.na{color:var(--m)}.note{font-size:13px;line-height:1.65;color:#b7c7d4;border:1px solid rgba(96,165,250,.2);background:rgba(96,165,250,.05);padding:13px;border-radius:11px}.badge{font-size:12px;color:var(--m);border:1px solid var(--l);border-radius:999px;padding:5px 9px}.err{display:none;color:#ffc0c7;border:1px solid rgba(251,113,133,.3);background:rgba(251,113,133,.06);padding:12px;border-radius:10px;margin-top:12px}.footer{font-size:11px;color:#60778b;text-align:center;margin:18px}@media(max-width:1100px){.g2,.hero{grid-template-columns:1fr}.weights{grid-template-columns:1fr 1fr}}@media(max-width:680px){.app{padding:10px}.weights,.scorebox{grid-template-columns:1fr}.top{align-items:flex-start}.big{font-size:30px}.brand h1{font-size:20px}.price b{font-size:22px}table{font-size:13px}}
-</style></head><body><div class="app"><div class="top"><div class="brand"><h1>科大 Crypto｜牛熊週期雷達</h1><div class="sub">Binance 真實行情 · Gate 決定週期 · % 顯示條件完成度</div></div><div class="price"><b id="price">載入中…</b><small id="updated">BTCUSDT</small></div></div><div id="err" class="err"></div>
-<div class="grid g2"><section class="panel"><div class="ph"><h2>目前週期判定</h2><span class="badge">LIVE Binance</span></div><div class="pb"><div class="hero"><div class="state"><div class="big" id="regime">--</div><div class="phase" id="phase">--</div><div class="desc" id="explain">--</div></div><div class="scorebox"><div class="score"><span>週期信心指數</span><b class="good" id="confidence">--</b><small>不是上漲機率</small></div><div class="score"><span>資料覆蓋率</span><b id="coverage">--</b><small>缺資料不當 0 分</small></div></div></div></div></section>
-<section class="panel"><div class="ph"><h2>權重邏輯</h2></div><div class="pb"><div class="note"><b>週期階段不是由加權平均投票。</b> Gate 先判斷復甦 / 牛初 / 牛中 / 熊確認；% 只衡量支持該判斷的證據完整度。總權重：月線 25%、EMA Ribbon 25%、日線道氏 20%、鏈上 15%、ETF 15%。MSTR 不納入 BTC 牛熊主信心。</div></div></section></div>
-<section class="panel"><div class="ph"><h2>5 大維度達成率</h2><span class="badge">大項 %</span></div><div class="pb"><div class="weights" id="weights"></div></div></section>
-<section class="panel"><div class="ph"><h2>每個指標達成 %</h2><span class="badge">子指標明細</span></div><div class="pb" style="overflow:auto"><table><thead><tr><th>大項</th><th>子指標</th><th>達成率</th><th>占大項</th><th>說明</th></tr></thead><tbody id="details"></tbody></table></div></section>
-<section class="panel"><div class="ph"><h2>怎麼看這些 %</h2></div><div class="pb"><div class="note">例如「週線 EMA 斜率廣度 75%」= 8 條 EMA 中有 6 條已向上；「完整多頭排列 0%」= 尚未達成 20&gt;25&gt;...&gt;55。這代表市場可能處於牛初扭帶階段，而不是直接判定為熊。80% 信心不代表有 80% 機率上漲。</div></div></section>
-<div class="footer">技術面直接讀 Binance 公開 REST API；ETF / 鏈上若未取得則顯示 N/A 並反映在資料覆蓋率。</div></div>
-<script>
-const $=x=>document.getElementById(x),P=[20,25,30,35,40,45,50,55],labels={monthly:"月線連陽",ema:"EMA Ribbon",dow:"日線道氏",onchain:"鏈上",etf:"ETF"};
-function clamp(x,a=0,b=100){return Math.max(a,Math.min(b,x))}function fmt(x){return x==null?"N/A":x.toFixed(1)+"%"}function cls(x){return x==null?"na":x>=70?"good":x>=40?"watch":"risk"}
-function mapk(k){return {o:+k[1],h:+k[2],l:+k[3],c:+k[4],ct:+k[6]}}function closed(a){return a.filter(x=>x.ct<Date.now())}
-function emas(v,p){let o=new Array(v.length).fill(null);if(v.length<p)return o;let e=v.slice(0,p).reduce((a,b)=>a+b,0)/p,k=2/(p+1);o[p-1]=e;for(let i=p;i<v.length;i++){e=v[i]*k+e*(1-k);o[i]=e}return o}
-function streak(a,onlyClosed){let q=onlyClosed?closed(a):a,n=0,d0=0;for(let i=q.length-1;i>=0;i--){let d=q[i].c>q[i].o?1:q[i].c<q[i].o?-1:0;if(!d)break;if(!d0)d0=d;if(d!==d0)break;n++}return n*d0}
-function pivots(c,l=2,r=2){let hi=[],lo=[];for(let i=l;i<c.length-r;i++){let H=1,L=1;for(let j=i-l;j<=i+r;j++){if(j===i)continue;if(c[j].h>=c[i].h)H=0;if(c[j].l<=c[i].l)L=0}if(H)hi.push(c[i].h);if(L)lo.push(c[i].l)}return{hi,lo}}
-function item(name,a,w,ok,detail){return{name,achievement:a==null?null:clamp(a),weight:w,available:ok,detail}}function dim(items){let aw=items.filter(x=>x.available).reduce((s,x)=>s+x.weight,0),a=aw?items.filter(x=>x.available).reduce((s,x)=>s+x.achievement*x.weight,0)/aw:null;return{achievement:a,coverage:aw,items}}
-async function bj(path){let err;for(let b of ["https://data-api.binance.vision","https://api.binance.com","https://api1.binance.com"]){try{let r=await fetch(b+path,{cache:"no-store"});if(!r.ok)throw Error(r.status);return await r.json()}catch(e){err=e}}throw err}
-async function run(){
- try{
-  let [mr,wr,dr,t]=await Promise.all([bj("/api/v3/klines?symbol=BTCUSDT&interval=1M&limit=180"),bj("/api/v3/klines?symbol=BTCUSDT&interval=1w&limit=400"),bj("/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=500"),bj("/api/v3/ticker/24hr?symbol=BTCUSDT")]);
-  let M=mr.map(mapk),W=closed(wr.map(mapk)),D=closed(dr.map(mapk)),price=+t.lastPrice,live=Math.max(0,streak(M,false)),conf=Math.max(0,streak(M,true));
-  let wem=P.map(p=>{let s=emas(W.map(x=>x.c),p);return{v:s.at(-1),prev:s.at(-2),slope:s.at(-1)-s.at(-2)}}),top=Math.max(...wem.map(x=>x.v)),bot=Math.min(...wem.map(x=>x.v)),slopes=wem.filter(x=>x.slope>0).length,ordered=0;for(let i=0;i<7;i++)if(wem[i].v>wem[i+1].v)ordered++;
-  let dem=P.map(p=>emas(D.map(x=>x.c),p).at(-1)),dord=0;for(let i=0;i<7;i++)if(dem[i]>dem[i+1])dord++;
-  let pv=pivots(D.slice(-180)),minor=pv.hi.at(-1),major=pv.hi.length?Math.max(...pv.hi.slice(-3)):null,low=pv.lo.at(-1),bos1=minor!=null&&price>minor,bos2=major!=null&&price>major;
-  let preview="RECOVERY",confirmed="RECOVERY";if(live>=3&&price>top&&slopes>=5&&bos1)preview="EARLY_BULL_PREVIEW";if(conf>=3&&W.at(-1).c>top&&slopes>=5)confirmed="EARLY_BULL_CONFIRMED";if(conf>=3&&ordered>=6&&W.at(-1).c>top)preview=confirmed="MID_BULL";if(price<bot&&slopes<=2&&streak(M,true)<=-2)preview=confirmed="BEAR_CONFIRMED";
-  let zh={RECOVERY:"復甦",EARLY_BULL_PREVIEW:"復甦 → 牛初（預覽）",EARLY_BULL_CONFIRMED:"牛初確認",MID_BULL:"牛市中期",BEAR_CONFIRMED:"熊市確認"}[preview];
-  let DIMS={};
-  DIMS.monthly=dim([item("3根月陽－即時進度",Math.min(live/3,1)*100,60,true,`即時連陽 ${live} 根`),item("3根月陽－收盤確認",Math.min(conf/3,1)*100,40,true,`已收盤連陽 ${conf} 根`)]);
-  DIMS.ema=dim([item("週線價格站上Ribbon",price>top?100:clamp((price-bot)/(top-bot)*100),25,true,`週線帶 $${Math.round(bot).toLocaleString()} ~ $${Math.round(top).toLocaleString()}`),item("週線EMA斜率廣度",slopes/8*100,25,true,`${slopes}/8 條向上`),item("週線完整多頭排列",ordered/7*100,20,true,`${ordered}/7 相鄰關係成立`),item("日線站上完整Ribbon",D.at(-1).c>Math.max(...dem)?100:0,15,true,"日線收盤 vs EMA20~55"),item("日線Ribbon多頭排列",dord/7*100,15,true,`${dord}/7 相鄰關係成立`)]);
-  DIMS.dow=dim([item("最近小波段BOS",bos1?100:clamp((price/(minor||price)-.97)/.03*100),35,minor!=null,minor?`小前高 $${Math.round(minor).toLocaleString()}`:"N/A"),item("主要波段BOS",bos2?100:clamp((price/(major||price)-.95)/.05*100),35,major!=null,major?`主要前高 $${Math.round(major).toLocaleString()}`:"N/A"),item("關鍵前低保護",low&&price>low?100:0,30,low!=null,low?`前低 $${Math.round(low).toLocaleString()}`:"N/A")]);
-  DIMS.onchain=dim([item("Realized Price Delta > 0",null,35,false,"鏈上來源待接"),item("UTXO / Supply in Loss下降",null,25,false,"鏈上來源待接"),item("Realized Cap 30D資本流入",null,25,false,"鏈上來源待接"),item("MVRV脫離深熊區",null,15,false,"鏈上來源待接")]);
-  DIMS.etf=dim([item("ETF 7D淨流入",null,50,false,"ETF來源待自動化"),item("ETF 14D淨流入",null,35,false,"ETF來源待自動化"),item("正流入連續性",null,15,false,"ETF來源待自動化")]);
-  let weights={monthly:25,ema:25,dow:20,onchain:15,etf:15},eff=Object.keys(weights).reduce((s,k)=>s+weights[k]*DIMS[k].coverage/100,0),pts=Object.keys(weights).reduce((s,k)=>s+weights[k]*DIMS[k].coverage/100*(DIMS[k].achievement||0)/100,0),confidence=pts/eff*100;
-  $("price").textContent="$"+price.toLocaleString("en-US",{maximumFractionDigits:0});$("updated").textContent="Binance · "+new Date().toLocaleString("zh-TW");$("regime").textContent=zh;$("phase").textContent=preview==="EARLY_BULL_PREVIEW"?"復甦往牛初推進中":"週期狀態";$("confidence").textContent=fmt(confidence);$("coverage").textContent=fmt(eff);$("explain").textContent=`即時月陽 ${live} 根、已收盤 ${conf} 根；週線 ${slopes}/8 條 EMA 向上，完整排列 ${ordered}/7；日線小波段 BOS ${bos1?"已成立":"未成立"}。`;
-  $("weights").innerHTML=Object.keys(weights).map(k=>{let x=DIMS[k],a=x.achievement;return `<div class="wc"><h3>${labels[k]} · 權重 ${weights[k]}%</h3><div class="num ${cls(a)}">${fmt(a)}</div><div class="meta">資料覆蓋 ${x.coverage.toFixed(0)}%<br>有效貢獻 ${a==null?"N/A":(weights[k]*x.coverage/100*a/100).toFixed(1)+" / "+weights[k]}</div><div class="bar"><i style="width:${a||0}%"></i></div></div>`}).join("");
-  let rows=[];Object.keys(weights).forEach(k=>DIMS[k].items.forEach(i=>rows.push(`<tr><td><b>${labels[k]}</b></td><td>${i.name}</td><td class="pct ${cls(i.achievement)}">${fmt(i.achievement)}</td><td>${i.weight}%</td><td>${i.detail}</td></tr>`)));$("details").innerHTML=rows.join("");
- }catch(e){$("err").style.display="block";$("err").textContent="Binance 資料載入失敗："+e.message}
-}run();setInterval(run,15*60*1000);
-</script></body></html>
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>科大 Crypto｜牛熊週期雷達</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand"><div class="logo">KD</div><div><h1>科大 Crypto｜牛熊週期雷達</h1><div class="sub">即時 Binance × 歷史回看 × 當時指標重算</div></div></div>
+    <div class="livebox"><div class="label">BTCUSDT 即時</div><div id="livePrice" class="liveprice">--</div><div id="liveMeta" class="muted">連線中…</div></div>
+  </header>
+
+  <section class="grid topgrid">
+    <div class="panel">
+      <div class="ph"><h2>目前週期</h2><span class="pill">LIVE</span></div>
+      <div class="pb hero">
+        <div><div id="currentRegime" class="regime">載入中…</div><div id="currentDesc" class="desc">以目前可取得資料計算。</div></div>
+        <div class="scoregrid">
+          <div class="score"><span>週期信心</span><b id="currentConfidence">--</b></div>
+          <div class="score"><span>資料覆蓋率</span><b id="currentCoverage">--</b></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="ph"><h2>歷史回看模式</h2><button id="nowBtn" class="btn">回到現在</button></div>
+      <div class="pb">
+        <div class="dateRow"><label>指定日期 <input id="datePick" type="date"></label><button id="goDate" class="btn">跳到日期</button></div>
+        <div class="note">滑鼠移動可預覽；<b>點一下 K 棒即可鎖定</b>。右側指標只使用當時已知資料，不偷看未來 K 棒。</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="ph"><h2>BTC 歷史價格 + EMA</h2><div class="tabs"><button class="tab on" data-tf="1D">1D</button><button class="tab" data-tf="1W">1W</button><button class="tab" data-tf="1M">1M</button></div></div>
+    <div class="chartwrap">
+      <div id="chart"></div>
+      <aside class="snapshot">
+        <div class="snaphead"><div><span class="muted">回看時間</span><h3 id="snapDate">現在</h3></div><span id="lockState" class="pill">LIVE</span></div>
+        <div class="snapprice" id="snapPrice">--</div>
+        <div id="snapRegime" class="snapregime">--</div>
+        <div class="twocol"><div><span>信心</span><b id="snapConfidence">--</b></div><div><span>覆蓋率</span><b id="snapCoverage">--</b></div></div>
+        <div class="divider"></div>
+        <div class="minirow"><span>月線連陽</span><b id="snapMonth">--</b></div>
+        <div class="minirow"><span>週線 EMA 上斜</span><b id="snapWeekSlope">--</b></div>
+        <div class="minirow"><span>週線完整多排</span><b id="snapWeekAlign">--</b></div>
+        <div class="minirow"><span>日線 BOS</span><b id="snapBos">--</b></div>
+        <div class="minirow"><span>ETF 7D</span><b id="snapEtf7">--</b></div>
+        <div class="minirow"><span>RP Delta</span><b id="snapRp">--</b></div>
+        <div class="hint">歷史 ETF / 鏈上若當天無資料會顯示 N/A，不會當 0 分。</div>
+      </aside>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="ph"><h2 id="detailTitle">當下指標達成率</h2><span class="pill">可追溯</span></div>
+    <div class="pb">
+      <div id="dimensionCards" class="dimensionCards"></div>
+      <div class="tablewrap">
+        <table><thead><tr><th>大項</th><th>子指標</th><th>達成率</th><th>占大項</th><th>說明</th></tr></thead><tbody id="detailBody"></tbody></table>
+      </div>
+    </div>
+  </section>
+
+  <footer>週期階段由 Gate 判定；百分比只表示證據完成度，不是未來上漲機率。</footer>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
