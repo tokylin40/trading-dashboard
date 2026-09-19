@@ -4,7 +4,7 @@ const $=id=>document.getElementById(id);
 const BASES=["https://data-api.binance.vision","https://api.binance.com","https://api1.binance.com"];
 const WGT={monthly:25,ema:25,dow:20,onchain:15,etf:15};
 const LAB={monthly:"月線連陽",ema:"EMA Ribbon",dow:"日線道氏",onchain:"鏈上成本",etf:"ETF資金流"};
-let S={H4:[],D:[],W:[],M:[],ticker:null,etf:[],onchain:[],tf:"1D",locked:false,lockedTs:null,chart:null,candle:null,emaLines:[],phasePath:[]};
+let S={H4:[],D:[],W:[],M:[],ticker:null,etf:[],onchain:[],tf:"1D",locked:false,lockedTs:null,chart:null,candle:null,emaLines:[],phasePath:[],kedaPath:[]};
 
 function clamp(x,a=0,b=100){return Math.max(a,Math.min(b,x))}
 function mean(a){const z=a.filter(Number.isFinite);return z.length?z.reduce((s,v)=>s+v,0)/z.length:NaN}
@@ -26,7 +26,7 @@ async function refreshKlines(){
   binance("/api/v3/ticker/24hr?symbol=BTCUSDT")
  ]);
  S.H4=mergeBars(S.H4,h4.map(mapK));S.D=mergeBars(S.D,d.map(mapK));S.W=mergeBars(S.W,w.map(mapK));S.M=mergeBars(S.M,m.map(mapK));S.ticker=t;
- buildPhasePath();renderCurrent();if(S.chart&&!S.locked)drawChart();
+ buildPhasePath();buildKedaPath();renderCurrent();if(S.chart&&!S.locked)drawChart();
 }
 
 function emaSeries(vals,p){let out=new Array(vals.length).fill(null);if(vals.length<p)return out;let e=mean(vals.slice(0,p)),a=2/(p+1);out[p-1]=e;for(let i=p;i<vals.length;i++){e=vals[i]*a+e*(1-a);out[i]=e}return out}
@@ -103,6 +103,65 @@ function technicalInfo(D,W,H4,price,trend,drawdown){
  const dowScore=.2*d4.score+.5*dd.score+.3*dw.score,macdScore=.2*m4.score+.5*md.score+.3*mw.score;
  return {dow4h:d4,dowDaily:dd,dowWeekly:dw,dowScore,macd4h:m4,macdDaily:md,macdWeekly:mw,macdScore,levels:sr,breakout:bo,wyckoff:wy};
 }
+
+function kedaRawInfo(W){
+ if(W.length<60)return {score:NaN,emaScore:NaN,macd:{state:"N/A",score:NaN},dow:{state:"資料不足",score:NaN,high:"--",low:"--",event:"--"},rawBull:false,rawExit:false,slopes:0,ordered:0,wtop:NaN,wbot:NaN,close:NaN};
+ const periods=[20,25,30,35,40,45,50,55],vals=W.map(x=>x.c),close=W.at(-1).c;
+ const es=periods.map(p=>{const s=emaSeries(vals,p);return {p,v:s.at(-1),prev:s.at(-2),slope:s.at(-1)-s.at(-2)}}).filter(x=>Number.isFinite(x.v));
+ const wtop=Math.max(...es.map(x=>x.v)),wbot=Math.min(...es.map(x=>x.v)),slopes=es.filter(x=>x.slope>0).length;
+ let ordered=0;for(let i=0;i<es.length-1;i++)if(es[i].v>es[i+1].v)ordered++;
+ const pos=close>wtop?100:close<wbot?0:clamp((close-wbot)/(wtop-wbot)*100);
+ const emaScore=.4*pos+.3*(slopes/8*100)+.3*(ordered/7*100);
+ const macd=macdInfo(W),dow=dowInfo(W,close);
+ const score=.5*emaScore+.25*macd.score+.25*dow.score;
+ const rawBull=close>wtop&&slopes>=5&&ordered>=4&&macd.score>=50&&dow.score>=50;
+ const rawExit=close<wbot||(score<45&&slopes<=3)||(macd.score<35&&dow.score===0);
+ return {score,emaScore,macd,dow,rawBull,rawExit,slopes,ordered,wtop,wbot,close};
+}
+function buildKedaPath(){
+ let state="OFF",bullCount=0,exitCount=0,since=null,path=[],acc=[],now=Date.now();
+ for(const w of S.W){
+   if(w.ct>now)break;
+   acc.push(w);if(acc.length<60)continue;
+   const info=kedaRawInfo(acc),prev=state;
+   if(state==="OFF"){
+     bullCount=info.rawBull?bullCount+1:0;exitCount=0;
+     if(bullCount>=2){state="ON";since=w.ct;bullCount=0}
+   }else{
+     exitCount=info.rawExit?exitCount+1:0;bullCount=0;
+     if(exitCount>=2){state="OFF";since=w.ct;exitCount=0}
+   }
+   if(!since)since=w.ct;
+   path.push({...info,ts:w.ct,state,since,changed:state!==prev,close:w.c});
+ }
+ S.kedaPath=path;
+}
+function kedaAt(ts){
+ const a=S.kedaPath;let lo=0,hi=a.length-1,best=null;
+ while(lo<=hi){const m=(lo+hi)>>1;if(a[m].ts<=ts){best=a[m];lo=m+1}else hi=m-1}
+ return best;
+}
+function kedaBacktestAsOf(ts){
+ const a=S.kedaPath.filter(x=>x.ts<=ts);if(!a.length)return {trades:0,winRate:NaN,totalReturn:NaN,buyHold:NaN};
+ let prev="OFF",entry=null,trades=[],firstEntry=null,lastClose=a.at(-1).close;
+ for(const x of a){
+   if(prev==="OFF"&&x.state==="ON"){entry={ts:x.ts,price:x.close};if(firstEntry==null)firstEntry=x.close}
+   if(prev==="ON"&&x.state==="OFF"&&entry){trades.push({entry,exit:{ts:x.ts,price:x.close},ret:(x.close/entry.price-1)*100});entry=null}
+   prev=x.state;
+ }
+ const wins=trades.filter(x=>x.ret>0).length,compound=trades.reduce((v,x)=>v*(1+x.ret/100),1);
+ let eq=1,peak=1,mdd=0,bhPeak=1,bhMdd=0,started=false,prevRow=null;
+ for(const x of a){
+   if(!started&&x.state==="ON"){started=true;prevRow=x;continue}
+   if(!started)continue;
+   if(prevRow&&prevRow.state==="ON")eq*=x.close/prevRow.close;
+   peak=Math.max(peak,eq);mdd=Math.min(mdd,(eq/peak-1)*100);
+   const bh=x.close/firstEntry;bhPeak=Math.max(bhPeak,bh);bhMdd=Math.min(bhMdd,(bh/bhPeak-1)*100);
+   prevRow=x;
+ }
+ return {trades:trades.length,winRate:trades.length?wins/trades.length*100:NaN,totalReturn:(compound-1)*100,buyHold:firstEntry?((lastClose/firstEntry)-1)*100:NaN,maxDrawdown:mdd,buyHoldMdd:bhMdd,open:entry};
+}
+
 function streak(c){let n=0,dir=0;for(let i=c.length-1;i>=0;i--){let d=c[i].c>c[i].o?1:c[i].c<c[i].o?-1:0;if(!d)break;if(!dir)dir=d;if(d!==dir)break;n++}return n*dir}
 function partialMonth(ts,D){
  const dt=new Date(ts),y=dt.getUTCFullYear(),m=dt.getUTCMonth();
@@ -128,12 +187,16 @@ const NEXT_LABEL={
  BEAR:"築底期",BOTTOMING:"復甦期",RECOVERY:"牛初確認",EARLY_BULL:"牛市中期",
  MID_BULL:"牛末期",LATE_BULL:"高檔派發期",DISTRIBUTION:"熊市確認"
 };
+function halvingDaysAt(ts){
+ const halvings=[Date.UTC(2016,6,9),Date.UTC(2020,4,11),Date.UTC(2024,3,20)];
+ let last=null;for(const h of halvings)if(h<=ts)last=h;return last==null?NaN:(ts-last)/86400000;
+}
 function phaseProgress(phase,q){
  if(phase==="BEAR")return clamp((q.drawdown<=-25?35:10)+(q.price>q.wbot?25:0)+Math.min(q.slopes/3,1)*20+(q.bosMinor?20:0));
  if(phase==="BOTTOMING")return clamp((q.price>q.wtop?30:q.price>q.wbot?15:0)+Math.min(q.slopes/4,1)*30+(q.bosMinor?25:0)+Math.min(q.stClosed/2,1)*15);
  if(phase==="RECOVERY")return clamp(Math.min(q.stClosed/3,1)*40+(q.price>q.wtop?20:0)+Math.min(q.slopes/5,1)*20+(q.bosMinor?10:0)+(q.et&&q.et.seven>0?10:0));
  if(phase==="EARLY_BULL")return clamp(Math.min(q.ordered/6,1)*50+(q.weekBull?25:0)+(q.price>q.wtop?15:0)+Math.min(q.slopes/8,1)*10);
- if(phase==="MID_BULL"){const maturity=clamp((q.cycleAge||0)/800*100),ath=clamp((q.drawdown+20)/15*100),structure=mean([q.ordered/7*100,q.slopes/8*100]);return clamp(maturity*.45+ath*.25+structure*.30);}
+ if(phase==="MID_BULL"){const hd=q.halvingDays||0,maturity=(hd>900||hd<150)?0:clamp((hd-150)/300*100),ath=clamp((q.drawdown+20)/15*100),structure=mean([q.ordered/7*100,q.slopes/8*100]);return clamp(maturity*.45+ath*.25+structure*.30);}
  if(phase==="LATE_BULL")return clamp((q.distWarn?60:20)+(q.price<q.wtop?20:0)+(q.weekBear?20:0));
  if(phase==="DISTRIBUTION")return clamp((q.hardBear?70:0)+(q.price<q.wbot?15:0)+(q.weekBear?15:0));
  return 0;
@@ -164,14 +227,16 @@ function transitionPhase(phase,q,counter,age,cycleAge){
    if(hold(counter,"early_mid",q.midBull,14)>=14)return "MID_BULL";
    if(hold(counter,"early_fail",weeklyBreak,14)>=14)return "RECOVERY";
  }else if(phase==="MID_BULL"){
-   const cycleMature=cycleAge>=800&&q.drawdown>-8&&q.ordered>=6&&q.slopes>=6&&q.price>q.wtop;
-   if(hold(counter,"mid_late",cycleMature,14)>=14)return "LATE_BULL";
-   if(hold(counter,"mid_fail",weeklyBreak,14)>=14)return "EARLY_BULL";
+   const finalExpansion=q.halvingDays>=450&&q.halvingDays<=900&&q.drawdown>-8&&q.ordered>=6&&q.slopes>=6&&q.price>q.wtop;
+   const structuralBreak=q.halvingDays>=180&&(q.hardBear||(q.drawdown<=-25&&q.trend==="BEARISH"&&q.slopes<=2));
+   if(hold(counter,"mid_late_expansion",finalExpansion,14)>=14)return "LATE_BULL";
+   if(hold(counter,"mid_late_break",structuralBreak,7)>=7)return "LATE_BULL";
  }else if(phase==="LATE_BULL"){
-   if(hold(counter,"late_dist",q.distWarn,7)>=7)return "DISTRIBUTION";
+   const breakdown=q.hardBear||(weeklyBreak&&q.drawdown<=-20);
+   if(hold(counter,"late_breakdown",breakdown,7)>=7)return "DISTRIBUTION";
+   if(age>=21&&hold(counter,"late_dist",q.distWarn,14)>=14)return "DISTRIBUTION";
  }else if(phase==="DISTRIBUTION"){
    if(hold(counter,"dist_bear",q.hardBear||(weeklyBreak&&q.drawdown<=-20),7)>=7)return "BEAR";
-   if(hold(counter,"dist_recover",q.trend==="BULLISH"&&q.drawdown>-10,14)>=14)return "LATE_BULL";
  }
  return phase;
 }
@@ -256,7 +321,8 @@ function calc(ts,livePriceOverride=null,rawOnly=false){
  const dims={monthly:month,ema,dow,onchain,etf:etfd};
  let effective=0,pts=0;for(const k of Object.keys(WGT)){effective+=WGT[k]*dims[k].coverage/100;pts+=WGT[k]*dims[k].coverage/100*(Number.isFinite(dims[k].achievement)?dims[k].achievement:0)/100}
  const conf=effective?pts/effective*100:NaN,cov=effective;
- const base={ts,price,confidence:conf,coverage:cov,dims,stLive,stClosed,signedLive,signedClosed,slopes,ordered,bosMinor,bosMajor,minor,major,keylow,et,delta,mvrv,wtop,wbot,weekBull,weekBear,cycleHigh,drawdown,trend,recoveryStrong,earlyConfirmed,midBull,hardBear,distWarn};
+ const halvingDays=halvingDaysAt(ts);
+ const base={ts,price,confidence:conf,coverage:cov,dims,stLive,stClosed,signedLive,signedClosed,slopes,ordered,bosMinor,bosMajor,minor,major,keylow,et,delta,mvrv,wtop,wbot,weekBull,weekBear,cycleHigh,drawdown,trend,recoveryStrong,earlyConfirmed,midBull,hardBear,distWarn,halvingDays};
  if(rawOnly)return base;
  const ps=phaseAt(ts),phase=ps?.phase||initialPhase(base);
  base.phase=phase;base.cycleAge=ps?.cycleAge||0;
@@ -265,6 +331,7 @@ function calc(ts,livePriceOverride=null,rawOnly=false){
  base.nextLabel=NEXT_LABEL[phase];
  const H4=tailAsOf(S.H4,ts,600);
  base.tech=technicalInfo(D,W,H4,price,trend,drawdown);
+ base.keda=kedaAt(ts);
  return base;
 }
 function cls(v){return !Number.isFinite(v)?"na":v>=70?"good":v>=40?"watch":"risk"}
@@ -273,11 +340,25 @@ function renderSnapshot(q,live=false){
  $("snapDate").textContent=live?"現在":day(q.ts);$("snapPrice").textContent=fmtP(q.price);$("snapRegime").textContent=q.regime;$("snapConfidence").textContent=fmtPct(q.confidence);$("snapCoverage").textContent=fmtPct(q.coverage);
  $("snapTrend").textContent=q.trend==="BULLISH"?"偏多":q.trend==="BEARISH"?"偏空":"中性";
  $("snapNext").textContent=fmtPct(q.nextProgress);$("snapNextLabel").textContent=q.nextLabel||"--";
+ $("snapKeda").textContent=q.keda?(q.keda.state==="ON"?"多頭 ON":"多頭 OFF"):"N/A";
  $("snapMonth").textContent=`即時 ${q.stLive} / 已收 ${q.stClosed}`;$("snapWeekSlope").textContent=`${q.slopes}/8`;$("snapWeekAlign").textContent=`${q.ordered}/7`;
  $("snapBos").textContent=q.bosMajor?"主要 BOS":q.bosMinor?"小波段 BOS":"未突破";$("snapEtf7").textContent=q.et?`${q.et.seven>=0?"+":""}${q.et.seven.toFixed(1)}M`:"N/A";$("snapRp").textContent=Number.isFinite(q.delta)?`${q.delta>=0?"+":""}${q.delta.toFixed(1)}%`:"N/A";
  $("lockState").textContent=live?"LIVE":S.locked?"LOCKED":"HOVER";$("detailTitle").textContent=live?"當下指標達成率":`${day(q.ts)} 當時指標達成率`;
  $("techTitle").textContent=live?"技術分析層":`${day(q.ts)} 技術分析層`;
- renderTech(q);renderDetails(q);
+ renderKeda(q);renderTech(q);renderDetails(q);
+}
+
+function renderKeda(q){
+ const k=q.keda,bt=kedaBacktestAsOf(q.ts);
+ if(!k){$("kedaStatus").textContent="N/A";return}
+ $("kedaStatus").textContent=k.state==="ON"?"多頭 ON":"多頭 OFF";
+ $("kedaStatus").className="kedaStatus "+(k.state==="ON"?"good":"risk");
+ $("kedaSince").textContent=(k.state==="ON"?"ON 自 ":"OFF 自 ")+day(k.since)+"｜僅已收週線可改變狀態";
+ $("kedaScore").textContent=fmtPct(k.score);
+ $("kedaEma").textContent=fmtPct(k.emaScore);$("kedaEmaDetail").textContent="斜率 "+k.slopes+"/8 · 排列 "+k.ordered+"/7";
+ $("kedaMacd").textContent=k.macd.state;$("kedaMacdDetail").textContent="MACD分數 "+fmtPct(k.macd.score);
+ $("kedaDow").textContent=k.dow.state;$("kedaDowDetail").textContent=k.dow.high+"/"+k.dow.low+" · "+k.dow.event;
+ $("btTrades").textContent=bt.trades;$("btWinRate").textContent=fmtPct(bt.winRate);$("btReturn").textContent=fmtPct(bt.totalReturn);$("btBuyHold").textContent=fmtPct(bt.buyHold);$("btMdd").textContent=fmtPct(bt.maxDrawdown);$("btBhMdd").textContent=fmtPct(bt.buyHoldMdd);
 }
 function renderTech(q){
  const t=q.tech;if(!t){$("techCards").innerHTML="";return}
@@ -338,5 +419,5 @@ async function load(){
 }
 document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{S.tf=b.dataset.tf;document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x===b));drawChart()});
 $("nowBtn").onclick=()=>{S.locked=false;S.lockedTs=null;drawChart();renderCurrent();S.chart.timeScale().scrollToRealTime()};
-$("goDate").onclick=()=>{const v=$("datePick").value;if(!v)return;const ts=new Date(v+"T23:59:59Z").getTime();S.locked=true;S.lockedTs=ts;const q=calc(ts);if(q){renderSnapshot(q,false);focusChart(ts)}};
+$("goDate").onclick=()=>{const v=$("datePick").value;if(!v)return;const ts=new Date(v+"T23:59:59.999Z").getTime();S.locked=true;S.lockedTs=ts;const q=calc(ts);if(q){renderSnapshot(q,false);focusChart(ts)}};
 load().catch(e=>{$("liveMeta").textContent="資料載入失敗："+e.message});
