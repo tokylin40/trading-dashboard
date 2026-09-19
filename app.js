@@ -4,7 +4,7 @@ const $=id=>document.getElementById(id);
 const BASES=["https://data-api.binance.vision","https://api.binance.com","https://api1.binance.com"];
 const WGT={monthly:25,ema:25,dow:20,onchain:15,etf:15};
 const LAB={monthly:"月線連陽",ema:"EMA Ribbon",dow:"日線道氏",onchain:"鏈上成本",etf:"ETF資金流"};
-let S={D:[],W:[],M:[],ticker:null,etf:[],onchain:[],tf:"1D",locked:false,lockedTs:null,chart:null,candle:null,emaLines:[]};
+let S={D:[],W:[],M:[],ticker:null,etf:[],onchain:[],tf:"1D",locked:false,lockedTs:null,chart:null,candle:null,emaLines:[],phasePath:[]};
 
 function clamp(x,a=0,b=100){return Math.max(a,Math.min(b,x))}
 function mean(a){const z=a.filter(Number.isFinite);return z.length?z.reduce((s,v)=>s+v,0)/z.length:NaN}
@@ -34,12 +34,92 @@ function etfAsOf(ts){
 function ocAsOf(ts){
  const date=day(ts),x=S.onchain.filter(r=>r.date<=date);return x.length?x.at(-1):null;
 }
-function calc(ts,livePriceOverride=null){
+
+const PHASE_LABEL={
+ BEAR:"熊市",BOTTOMING:"築底期",RECOVERY:"復甦期",EARLY_BULL:"牛初確認",
+ MID_BULL:"牛市中期",LATE_BULL:"牛末期",DISTRIBUTION:"高檔派發期"
+};
+const NEXT_LABEL={
+ BEAR:"築底期",BOTTOMING:"復甦期",RECOVERY:"牛初確認",EARLY_BULL:"牛市中期",
+ MID_BULL:"牛末期",LATE_BULL:"高檔派發期",DISTRIBUTION:"熊市確認"
+};
+function phaseProgress(phase,q){
+ if(phase==="BEAR")return clamp((q.drawdown<=-25?35:10)+(q.price>q.wbot?25:0)+Math.min(q.slopes/3,1)*20+(q.bosMinor?20:0));
+ if(phase==="BOTTOMING")return clamp((q.price>q.wtop?30:q.price>q.wbot?15:0)+Math.min(q.slopes/4,1)*30+(q.bosMinor?25:0)+Math.min(q.stClosed/2,1)*15);
+ if(phase==="RECOVERY")return clamp(Math.min(q.stClosed/3,1)*40+(q.price>q.wtop?20:0)+Math.min(q.slopes/5,1)*20+(q.bosMinor?10:0)+(q.et&&q.et.seven>0?10:0));
+ if(phase==="EARLY_BULL")return clamp(Math.min(q.ordered/6,1)*50+(q.weekBull?25:0)+(q.price>q.wtop?15:0)+Math.min(q.slopes/8,1)*10);
+ if(phase==="MID_BULL")return clamp((q.drawdown>-10?50:25)+(q.ordered>=5?20:0)+(q.weekBull?20:0)+(q.et&&q.et.fourteen>1000?10:0));
+ if(phase==="LATE_BULL")return clamp((q.distWarn?60:20)+(q.price<q.wtop?20:0)+(q.weekBear?20:0));
+ if(phase==="DISTRIBUTION")return clamp((q.hardBear?70:0)+(q.price<q.wbot?15:0)+(q.weekBear?15:0));
+ return 0;
+}
+function initialPhase(q){
+ if(q.hardBear)return "BEAR";
+ if(q.midBull)return "MID_BULL";
+ if(q.earlyConfirmed)return "EARLY_BULL";
+ if(q.recoveryStrong)return "RECOVERY";
+ return "BOTTOMING";
+}
+function hold(counter,key,cond){
+ counter[key]=cond?(counter[key]||0)+1:0;
+ return counter[key];
+}
+function transitionPhase(phase,q,counter,age){
+ const weeklyBreak=q.price<q.wbot&&q.slopes<=3;
+ const bottomCandidate=q.drawdown<=-20&&q.price>q.wbot&&q.slopes>=2&&q.trend!=="BEARISH";
+ if(phase==="BEAR"){
+   if(hold(counter,"bear_bottom",bottomCandidate,7)>=7)return "BOTTOMING";
+ }else if(phase==="BOTTOMING"){
+   if(hold(counter,"bottom_recovery",q.recoveryStrong&&q.stClosed>=1,7)>=7)return "RECOVERY";
+   if(hold(counter,"bottom_bear",q.hardBear,7)>=7)return "BEAR";
+ }else if(phase==="RECOVERY"){
+   if(hold(counter,"recovery_early",q.earlyConfirmed,7)>=7)return "EARLY_BULL";
+   if(hold(counter,"recovery_fail",weeklyBreak||q.hardBear,14)>=14)return "BOTTOMING";
+ }else if(phase==="EARLY_BULL"){
+   if(hold(counter,"early_mid",q.midBull,14)>=14)return "MID_BULL";
+   if(hold(counter,"early_fail",weeklyBreak,14)>=14)return "RECOVERY";
+ }else if(phase==="MID_BULL"){
+   const agingBull=age>=90&&q.drawdown>-10&&q.ordered>=5&&q.slopes>=6;
+   if(hold(counter,"mid_late",agingBull,10)>=10)return "LATE_BULL";
+   if(hold(counter,"mid_fail",weeklyBreak,14)>=14)return "EARLY_BULL";
+ }else if(phase==="LATE_BULL"){
+   if(hold(counter,"late_dist",q.distWarn,7)>=7)return "DISTRIBUTION";
+   if(hold(counter,"late_mid",q.trend==="BULLISH"&&q.drawdown>-8&&!q.distWarn,14)>=14)return "MID_BULL";
+ }else if(phase==="DISTRIBUTION"){
+   if(hold(counter,"dist_bear",q.hardBear||(weeklyBreak&&q.drawdown<=-20),7)>=7)return "BEAR";
+   if(hold(counter,"dist_recover",q.trend==="BULLISH"&&q.drawdown>-10,14)>=14)return "LATE_BULL";
+ }
+ return phase;
+}
+function buildPhasePath(){
+ let phase=null,counter={},age=0,path=[];
+ for(const d of S.D){
+   const q=calc(d.ct,null,true);
+   if(!q)continue;
+   if(!phase){phase=initialPhase(q);age=1;}
+   else{
+     const next=transitionPhase(phase,q,counter,age);
+     if(next!==phase){phase=next;counter={};age=1;}else age++;
+   }
+   path.push({ts:d.ct,phase,age});
+ }
+ S.phasePath=path;
+}
+function phaseAt(ts){
+ let a=S.phasePath,lo=0,hi=a.length-1,best=null;
+ while(lo<=hi){
+   const mid=(lo+hi)>>1;
+   if(a[mid].ts<=ts){best=a[mid];lo=mid+1}else hi=mid-1;
+ }
+ return best;
+}
+function calc(ts,livePriceOverride=null,rawOnly=false){
  const D=S.D.filter(c=>c.ct<=ts),W=S.W.filter(c=>c.ct<=ts),Mclosed=S.M.filter(c=>c.ct<=ts);
  if(D.length<60||W.length<60||Mclosed.length<12)return null;
  let price=livePriceOverride??D.at(-1).c;
  const pm=partialMonth(ts,S.D),mLive=pm?[...Mclosed,pm]:Mclosed;
- const stLive=Math.max(0,streak(mLive)),stClosed=Math.max(0,streak(Mclosed));
+ const signedLive=streak(mLive),signedClosed=streak(Mclosed);
+ const stLive=Math.max(0,signedLive),stClosed=Math.max(0,signedClosed);
  const periods=[20,25,30,35,40,45,50,55], wc=W.map(x=>x.c),dc=D.map(x=>x.c);
  let we=periods.map(p=>{const s=emaSeries(wc,p);return {p,v:s.at(-1),prev:s.at(-2),slope:s.at(-1)-s.at(-2)}}).filter(x=>Number.isFinite(x.v));
  const wtop=Math.max(...we.map(x=>x.v)),wbot=Math.min(...we.map(x=>x.v)),slopes=we.filter(x=>x.slope>0).length;
@@ -47,6 +127,17 @@ function calc(ts,livePriceOverride=null){
  let de=periods.map(p=>emaSeries(dc,p).at(-1)),dord=0;for(let i=0;i<de.length-1;i++)if(de[i]>de[i+1])dord++;
  const pv=pivots(D,2,2),hi=pv.hi,lo=pv.lo,minor=hi.at(-1)?.p,major=hi.length?Math.max(...hi.slice(-3).map(x=>x.p)):NaN,keylow=lo.at(-1)?.p;
  const bosMinor=Number.isFinite(minor)&&price>minor,bosMajor=Number.isFinite(major)&&price>major,protect=Number.isFinite(keylow)&&price>keylow;
+ const wpv=pivots(W,2,2),wh=wpv.hi.slice(-2),wl=wpv.lo.slice(-2);
+ const weekBull=wh.length===2&&wl.length===2&&wh[1].p>wh[0].p&&wl[1].p>wl[0].p;
+ const weekBear=wh.length===2&&wl.length===2&&wh[1].p<wh[0].p&&wl[1].p<wl[0].p;
+ const cycleHigh=Math.max(...D.slice(-365).map(x=>x.h));
+ const drawdown=Number.isFinite(cycleHigh)?(price/cycleHigh-1)*100:NaN;
+ const trend=price>wtop&&slopes>=5?"BULLISH":price<wbot&&slopes<=3?"BEARISH":"NEUTRAL";
+ const recoveryStrong=price>wtop&&slopes>=4;
+ const earlyConfirmed=stClosed>=3&&W.at(-1).c>wtop&&slopes>=5;
+ const midBull=earlyConfirmed&&ordered>=5&&slopes>=6;
+ const hardBear=drawdown<=-20&&price<wbot&&slopes<=3&&(signedClosed<=-1||weekBear);
+ const distWarn=drawdown<=-12&&(price<wtop||slopes<=4||weekBear);
  const et=etfAsOf(ts),oc=ocAsOf(ts);
  let month=dim([itm("3根月陽－即時進度",stLive/3*100,60,true,`即時連陽 ${stLive} 根`),itm("3根月陽－收盤確認",stClosed/3*100,40,true,`已收盤連陽 ${stClosed} 根`)]);
  let ema=dim([
@@ -77,17 +168,21 @@ function calc(ts,livePriceOverride=null){
  const dims={monthly:month,ema,dow,onchain,etf:etfd};
  let effective=0,pts=0;for(const k of Object.keys(WGT)){effective+=WGT[k]*dims[k].coverage/100;pts+=WGT[k]*dims[k].coverage/100*(Number.isFinite(dims[k].achievement)?dims[k].achievement:0)/100}
  const conf=effective?pts/effective*100:NaN,cov=effective;
- let regime="復甦";
- if(stLive>=3&&price>wtop&&slopes>=5&&bosMinor)regime="復甦 → 牛初（預覽）";
- if(stClosed>=3&&W.at(-1).c>wtop&&slopes>=5)regime="牛初確認";
- if(stClosed>=3&&ordered>=6&&W.at(-1).c>wtop)regime="牛市中期";
- if(streak(Mclosed)<=-2&&price<wbot&&slopes<=2)regime="熊市確認";
- return {ts,price,regime,confidence:conf,coverage:cov,dims,stLive,stClosed,slopes,ordered,bosMinor,bosMajor,minor,major,keylow,et,delta,mvrv,wtop,wbot};
+ const base={ts,price,confidence:conf,coverage:cov,dims,stLive,stClosed,signedLive,signedClosed,slopes,ordered,bosMinor,bosMajor,minor,major,keylow,et,delta,mvrv,wtop,wbot,weekBull,weekBear,cycleHigh,drawdown,trend,recoveryStrong,earlyConfirmed,midBull,hardBear,distWarn};
+ if(rawOnly)return base;
+ const ps=phaseAt(ts),phase=ps?.phase||initialPhase(base);
+ base.phase=phase;
+ base.regime=PHASE_LABEL[phase];
+ base.nextProgress=phaseProgress(phase,base);
+ base.nextLabel=NEXT_LABEL[phase];
+ return base;
 }
 function cls(v){return !Number.isFinite(v)?"na":v>=70?"good":v>=40?"watch":"risk"}
 function renderSnapshot(q,live=false){
  if(!q)return;
  $("snapDate").textContent=live?"現在":day(q.ts);$("snapPrice").textContent=fmtP(q.price);$("snapRegime").textContent=q.regime;$("snapConfidence").textContent=fmtPct(q.confidence);$("snapCoverage").textContent=fmtPct(q.coverage);
+ $("snapTrend").textContent=q.trend==="BULLISH"?"偏多":q.trend==="BEARISH"?"偏空":"中性";
+ $("snapNext").textContent=fmtPct(q.nextProgress);$("snapNextLabel").textContent=q.nextLabel||"--";
  $("snapMonth").textContent=`即時 ${q.stLive} / 已收 ${q.stClosed}`;$("snapWeekSlope").textContent=`${q.slopes}/8`;$("snapWeekAlign").textContent=`${q.ordered}/7`;
  $("snapBos").textContent=q.bosMajor?"主要 BOS":q.bosMinor?"小波段 BOS":"未突破";$("snapEtf7").textContent=q.et?`${q.et.seven>=0?"+":""}${q.et.seven.toFixed(1)}M`:"N/A";$("snapRp").textContent=Number.isFinite(q.delta)?`${q.delta>=0?"+":""}${q.delta.toFixed(1)}%`:"N/A";
  $("lockState").textContent=live?"LIVE":S.locked?"LOCKED":"HOVER";$("detailTitle").textContent=live?"當下指標達成率":`${day(q.ts)} 當時指標達成率`;
@@ -103,7 +198,9 @@ function current(){
 }
 function renderCurrent(){
  const q=current();if(!q)return;$("livePrice").textContent=fmtP(q.price);$("liveMeta").textContent=`Binance · ${new Date().toLocaleTimeString("zh-TW")}`;$("currentRegime").textContent=q.regime;$("currentConfidence").textContent=fmtPct(q.confidence);$("currentCoverage").textContent=fmtPct(q.coverage);
- $("currentDesc").textContent=`月線即時連陽 ${q.stLive} 根；週線 ${q.slopes}/8 條 EMA 上斜；日線 ${q.bosMajor?"主要 BOS 已成立":q.bosMinor?"小波段 BOS 已成立":"尚未 BOS"}。`;
+ $("currentTrend").textContent=q.trend==="BULLISH"?"偏多":q.trend==="BEARISH"?"偏空":"中性";
+ $("currentNext").textContent=fmtPct(q.nextProgress);$("currentNextLabel").textContent="→ "+(q.nextLabel||"--");
+ $("currentDesc").textContent=`正式週期鎖定為「${q.regime}」；短期趨勢${q.trend==="BULLISH"?"偏多":q.trend==="BEARISH"?"偏空":"中性"}。近365日高點回撤 ${fmtPct(q.drawdown)}；月線已收連陽 ${q.stClosed} 根。`;
  if(!S.locked)renderSnapshot(q,true);
 }
 function timeVal(t){if(typeof t==="number")return t*1000;if(t&&typeof t==="object"&&"year"in t)return Date.UTC(t.year,t.month-1,t.day);return NaN}
@@ -133,7 +230,7 @@ async function load(){
   optional("data/etf_history.json"),optional("data/onchain_history.json")
  ]);
  S.D=d.map(mapK);S.W=w.map(mapK);S.M=m.map(mapK);S.ticker=t;S.etf=Array.isArray(e)?e:[];S.onchain=Array.isArray(o)?o:[];
- setupChart();renderCurrent();setInterval(async()=>{try{S.ticker=await binance("/api/v3/ticker/24hr?symbol=BTCUSDT");renderCurrent()}catch(e){}},15000);
+ buildPhasePath();setupChart();renderCurrent();setInterval(async()=>{try{S.ticker=await binance("/api/v3/ticker/24hr?symbol=BTCUSDT");renderCurrent()}catch(e){}},15000);
 }
 document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{S.tf=b.dataset.tf;document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x===b));drawChart()});
 $("nowBtn").onclick=()=>{S.locked=false;S.lockedTs=null;renderCurrent();S.chart.timeScale().scrollToRealTime()};

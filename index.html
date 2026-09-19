@@ -21,6 +21,8 @@
       <div class="pb hero">
         <div><div id="currentRegime" class="regime">載入中…</div><div id="currentDesc" class="desc">以目前可取得資料計算。</div></div>
         <div class="scoregrid">
+          <div class="score"><span>短期趨勢</span><b id="currentTrend">--</b></div>
+          <div class="score"><span>下一階段進度</span><b id="currentNext">--</b><small id="currentNextLabel">--</small></div>
           <div class="score"><span>週期信心</span><b id="currentConfidence">--</b></div>
           <div class="score"><span>資料覆蓋率</span><b id="currentCoverage">--</b></div>
         </div>
@@ -43,7 +45,8 @@
         <div class="snaphead"><div><span class="muted">回看時間</span><h3 id="snapDate">現在</h3></div><span id="lockState" class="pill">LIVE</span></div>
         <div class="snapprice" id="snapPrice">--</div>
         <div id="snapRegime" class="snapregime">--</div>
-        <div class="twocol"><div><span>信心</span><b id="snapConfidence">--</b></div><div><span>覆蓋率</span><b id="snapCoverage">--</b></div></div>
+        <div class="twocol"><div><span>週期信心</span><b id="snapConfidence">--</b></div><div><span>覆蓋率</span><b id="snapCoverage">--</b></div></div>
+        <div class="twocol"><div><span>短期趨勢</span><b id="snapTrend">--</b></div><div><span>下一階段</span><b id="snapNext">--</b><span id="snapNextLabel"></span></div></div>
         <div class="divider"></div>
         <div class="minirow"><span>月線連陽</span><b id="snapMonth">--</b></div>
         <div class="minirow"><span>週線 EMA 上斜</span><b id="snapWeekSlope">--</b></div>
@@ -66,7 +69,7 @@
     </div>
   </section>
 
-  <footer>週期階段由 Gate 判定；百分比只表示證據完成度，不是未來上漲機率。</footer>
+  <footer>正式週期採有記憶狀態機：只允許相鄰階段前進／退階並要求確認期；短期趨勢可以先轉弱，但不會直接把整個週期翻成熊市。</footer>
 </div>
 <script src="app.js"></script>
 </body>
