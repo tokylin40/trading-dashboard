@@ -16,6 +16,7 @@ async function fj(url){const r=await fetch(url,{cache:"no-store"});if(!r.ok)thro
 async function binance(path){let e;for(const b of BASES){try{return await fj(b+path)}catch(x){e=x}}throw e}
 async function optional(path){try{return await fj(path+"?ts="+Date.now())}catch(e){return []}}
 function mergeBars(a,b){return [...new Map([...a,...b].map(x=>[x.ot,x])).values()].sort((x,y)=>x.ot-y.ot)}
+function tailAsOf(a,ts,max=600){let lo=0,hi=a.length-1,best=-1;while(lo<=hi){const m=(lo+hi)>>1;if(a[m].ct<=ts){best=m;lo=m+1}else hi=m-1}return best<0?[]:a.slice(Math.max(0,best-max+1),best+1)}
 async function refreshKlines(){
  const [h4,d,w,m,t]=await Promise.all([
   binance("/api/v3/klines?symbol=BTCUSDT&interval=4h&limit=1000"),
@@ -25,11 +26,83 @@ async function refreshKlines(){
   binance("/api/v3/ticker/24hr?symbol=BTCUSDT")
  ]);
  S.H4=mergeBars(S.H4,h4.map(mapK));S.D=mergeBars(S.D,d.map(mapK));S.W=mergeBars(S.W,w.map(mapK));S.M=mergeBars(S.M,m.map(mapK));S.ticker=t;
- buildPhasePath();renderCurrent();if(S.chart)drawChart();
+ buildPhasePath();renderCurrent();if(S.chart&&!S.locked)drawChart();
 }
 
 function emaSeries(vals,p){let out=new Array(vals.length).fill(null);if(vals.length<p)return out;let e=mean(vals.slice(0,p)),a=2/(p+1);out[p-1]=e;for(let i=p;i<vals.length;i++){e=vals[i]*a+e*(1-a);out[i]=e}return out}
 function pivots(c,l=2,r=2){let hi=[],lo=[];for(let i=l;i<c.length-r;i++){let H=true,L=true;for(let j=i-l;j<=i+r;j++){if(j===i)continue;if(c[j].h>=c[i].h)H=false;if(c[j].l<=c[i].l)L=false}if(H)hi.push({i,p:c[i].h,t:c[i].ot});if(L)lo.push({i,p:c[i].l,t:c[i].ot})}return {hi,lo}}
+function sma(a,n){return a.length>=n?mean(a.slice(-n)):NaN}
+function stdev(a){const m=mean(a);return Math.sqrt(mean(a.map(x=>(x-m)*(x-m))))}
+function macdInfo(bars){
+ const vals=bars.map(x=>x.c),e12=emaSeries(vals,12),e26=emaSeries(vals,26);
+ const line=vals.map((_,i)=>Number.isFinite(e12[i])&&Number.isFinite(e26[i])?e12[i]-e26[i]:NaN),valid=line.filter(Number.isFinite);
+ if(valid.length<12)return {state:"N/A",score:NaN,line:NaN,signal:NaN,hist:NaN};
+ const sig=emaSeries(valid,9),m=valid.at(-1),s=sig.at(-1),pm=valid.at(-2),ps=sig.at(-2),hist=m-s,prevHist=pm-ps,e20=emaSeries(vals,20).at(-1);
+ const score=clamp((m>0?35:0)+(m>s?35:0)+(hist>prevHist?15:0)+(bars.at(-1).c>e20?15:0));
+ const state=m>0&&m>s?"多頭":m<0&&m<s?"空頭":m>s?"修復中":"轉弱中";
+ return {state,score,line:m,signal:s,hist};
+}
+function dowInfo(bars,price){
+ const p=pivots(bars,2,2),hs=p.hi.slice(-2),ls=p.lo.slice(-2);
+ if(hs.length<2||ls.length<2)return {state:"資料不足",score:NaN,high:"--",low:"--",event:"--"};
+ const high=hs[1].p>hs[0].p?"HH":"LH",low=ls[1].p>ls[0].p?"HL":"LL";
+ const state=high==="HH"&&low==="HL"?"多頭結構":high==="LH"&&low==="LL"?"空頭結構":"轉折／盤整";
+ const score=state==="多頭結構"?100:state==="空頭結構"?0:50;
+ let event="區間內";
+ if(state==="多頭結構"&&price<ls[1].p)event="CHoCH ↓";
+ else if(state==="空頭結構"&&price>hs[1].p)event="CHoCH ↑";
+ else if(price>hs[1].p)event="BOS ↑";
+ else if(price<ls[1].p)event="BOS ↓";
+ return {state,score,high,low,event,lastHigh:hs[1].p,lastLow:ls[1].p};
+}
+function clusterLevels(points,tol=.012){
+ const sorted=[...points].filter(Number.isFinite).sort((a,b)=>a-b),out=[];
+ for(const p of sorted){let c=out.find(x=>Math.abs(p-x.price)/x.price<=tol);if(c){c.sum+=p;c.touches++;c.price=c.sum/c.touches}else out.push({price:p,sum:p,touches:1})}
+ return out;
+}
+function supportResistance(bars,price){
+ const x=bars.slice(-260),pv=pivots(x,3,3),levels=clusterLevels([...pv.hi.map(x=>x.p),...pv.lo.map(x=>x.p)]);
+ let sup=levels.filter(x=>x.price<price*.997).sort((a,b)=>b.price-a.price)[0],res=levels.filter(x=>x.price>price*1.003).sort((a,b)=>a.price-b.price)[0];
+ if(!sup){const v=Math.min(...x.slice(-60).map(b=>b.l));sup={price:v,touches:1}}
+ if(!res){const v=Math.max(...x.slice(-60).map(b=>b.h));res={price:v,touches:1}}
+ const sStrength=clamp(30+(sup.touches-1)*18),rStrength=clamp(30+(res.touches-1)*18);
+ return {support:sup.price,resistance:res.price,sTouches:sup.touches,rTouches:res.touches,sStrength,rStrength,sDist:(price/sup.price-1)*100,rDist:(res.price/price-1)*100};
+}
+function atrValue(bars,n=14){if(bars.length<n+1)return NaN;const tr=[];for(let i=bars.length-n;i<bars.length;i++){const p=bars[i-1].c,b=bars[i];tr.push(Math.max(b.h-b.l,Math.abs(b.h-p),Math.abs(b.l-p)))}return mean(tr)}
+function breakoutInfo(bars){
+ const x=bars.slice(-180);if(x.length<80)return {score:NaN,direction:"N/A",atrScore:NaN,bbScore:NaN,volScore:NaN,rangeScore:NaN};
+ const atrs=[];for(let i=35;i<x.length;i++)atrs.push(atrValue(x.slice(0,i+1),14));const aNow=atrs.at(-1),atrScore=100*atrs.filter(v=>v>=aNow).length/atrs.length;
+ const widths=[];for(let i=20;i<=x.length;i++){const v=x.slice(i-20,i).map(b=>b.c),m=mean(v),sd=stdev(v);widths.push(m?4*sd/m:NaN)}const bw=widths.at(-1),bbScore=100*widths.filter(v=>v>=bw).length/widths.length;
+ const v20=sma(x.map(b=>b.v),20),v60=sma(x.map(b=>b.v),60),volScore=clamp((1.15-v20/v60)/.55*100);
+ const r20=(Math.max(...x.slice(-20).map(b=>b.h))-Math.min(...x.slice(-20).map(b=>b.l)))/x.at(-1).c;
+ const r60=(Math.max(...x.slice(-60).map(b=>b.h))-Math.min(...x.slice(-60).map(b=>b.l)))/x.at(-1).c,rangeScore=clamp((1-r20/r60)*130);
+ const m=macdInfo(x),e20=emaSeries(x.map(b=>b.c),20).at(-1),direction=x.at(-1).c>e20&&m.hist>0?"偏多":x.at(-1).c<e20&&m.hist<0?"偏空":"雙向等待";
+ return {score:mean([atrScore,bbScore,volScore,rangeScore]),direction,atrScore,bbScore,volScore,rangeScore};
+}
+function wyckoffInfo(bars,price,trend,drawdown){
+ const x=bars.slice(-140);if(x.length<90)return {stage:"資料不足",score:NaN,spring:false,utad:false};
+ let springAt=-1,utadAt=-1;
+ for(let i=Math.max(60,x.length-12);i<x.length;i++){
+   const prior=x.slice(i-60,i),b=x[i],lo=Math.min(...prior.map(z=>z.l)),hi=Math.max(...prior.map(z=>z.h)),av=mean(prior.map(z=>z.v));
+   const body=Math.max(Math.abs(b.c-b.o),b.c*.001),lw=Math.min(b.o,b.c)-b.l,uw=b.h-Math.max(b.o,b.c);
+   if(b.l<lo*.995&&b.c>lo&&lw>body*1.2&&b.v>av*1.05)springAt=i;
+   if(b.h>hi*1.005&&b.c<hi&&uw>body*1.2&&b.v>av*1.05)utadAt=i;
+ }
+ const spring=springAt>=0,utad=utadAt>=0,y=x.slice(-90),lo=Math.min(...y.map(b=>b.l)),hi=Math.max(...y.map(b=>b.h)),pos=(price-lo)/(hi-lo);
+ let stage="局部 Trading Range",score=50;
+ if(springAt>utadAt){stage="局部吸籌候選 / Spring";score=82}
+ else if(utadAt>springAt){stage="局部派發候選 / UTAD";score=82}
+ else if(trend==="BULLISH"&&pos>.55){stage="局部 Markup 候選";score=72}
+ else if(trend==="BEARISH"&&pos<.45){stage="局部 Markdown 候選";score=72}
+ else if(drawdown<=-20&&pos<.45){stage="局部吸籌區候選";score=60}
+ else if(drawdown>-15&&pos>.72){stage="局部派發區候選";score=58}
+ return {stage,score,spring,utad,position:clamp(pos*100),springAt,utadAt};
+}
+function technicalInfo(D,W,H4,price,trend,drawdown){
+ const d4=dowInfo(H4,price),dd=dowInfo(D,price),dw=dowInfo(W,price),m4=macdInfo(H4),md=macdInfo(D),mw=macdInfo(W),sr=supportResistance(D,price),bo=breakoutInfo(H4),wy=wyckoffInfo(D,price,trend,drawdown);
+ const dowScore=.2*d4.score+.5*dd.score+.3*dw.score,macdScore=.2*m4.score+.5*md.score+.3*mw.score;
+ return {dow4h:d4,dowDaily:dd,dowWeekly:dw,dowScore,macd4h:m4,macdDaily:md,macdWeekly:mw,macdScore,levels:sr,breakout:bo,wyckoff:wy};
+}
 function streak(c){let n=0,dir=0;for(let i=c.length-1;i>=0;i--){let d=c[i].c>c[i].o?1:c[i].c<c[i].o?-1:0;if(!d)break;if(!dir)dir=d;if(d!==dir)break;n++}return n*dir}
 function partialMonth(ts,D){
  const dt=new Date(ts),y=dt.getUTCFullYear(),m=dt.getUTCMonth();
@@ -187,6 +260,8 @@ function calc(ts,livePriceOverride=null,rawOnly=false){
  base.regime=PHASE_LABEL[phase];
  base.nextProgress=phaseProgress(phase,base);
  base.nextLabel=NEXT_LABEL[phase];
+ const H4=tailAsOf(S.H4,ts,600);
+ base.tech=technicalInfo(D,W,H4,price,trend,drawdown);
  return base;
 }
 function cls(v){return !Number.isFinite(v)?"na":v>=70?"good":v>=40?"watch":"risk"}
@@ -198,7 +273,19 @@ function renderSnapshot(q,live=false){
  $("snapMonth").textContent=`即時 ${q.stLive} / 已收 ${q.stClosed}`;$("snapWeekSlope").textContent=`${q.slopes}/8`;$("snapWeekAlign").textContent=`${q.ordered}/7`;
  $("snapBos").textContent=q.bosMajor?"主要 BOS":q.bosMinor?"小波段 BOS":"未突破";$("snapEtf7").textContent=q.et?`${q.et.seven>=0?"+":""}${q.et.seven.toFixed(1)}M`:"N/A";$("snapRp").textContent=Number.isFinite(q.delta)?`${q.delta>=0?"+":""}${q.delta.toFixed(1)}%`:"N/A";
  $("lockState").textContent=live?"LIVE":S.locked?"LOCKED":"HOVER";$("detailTitle").textContent=live?"當下指標達成率":`${day(q.ts)} 當時指標達成率`;
- renderDetails(q);
+ $("techTitle").textContent=live?"技術分析層":`${day(q.ts)} 技術分析層`;
+ renderTech(q);renderDetails(q);
+}
+function renderTech(q){
+ const t=q.tech;if(!t){$("techCards").innerHTML="";return}
+ const d4=t.dow4h,d=t.dowDaily,w=t.dowWeekly,m4=t.macd4h,m=t.macdDaily,mw=t.macdWeekly,l=t.levels,b=t.breakout,y=t.wyckoff;
+ const wyEvent=y.springAt>y.utadAt?"最近事件：Spring":y.utadAt>y.springAt?"最近事件：UTAD":"未偵測到明確 Spring / UTAD";
+ $("techCards").innerHTML=`
+ <div class="tech"><h3>道氏結構</h3><div class="main ${cls(t.dowScore)}">${d.high}/${d.low}</div><div class="subline">4H：${d4.high}/${d4.low} · ${d4.event}<br>日線：${d.state} · ${d.event}<br>週線：${w.high}/${w.low} · ${w.state}</div><div class="miniPct ${cls(t.dowScore)}">多頭結構 ${fmtPct(t.dowScore)}</div></div>
+ <div class="tech"><h3>MACD 趨勢</h3><div class="main ${cls(t.macdScore)}">${m.state}</div><div class="subline">4H：${m4.state}<br>日線：${m.state} · Hist ${Number.isFinite(m.hist)?m.hist.toFixed(0):"N/A"}<br>週線：${mw.state}</div><div class="miniPct ${cls(t.macdScore)}">趨勢達成 ${fmtPct(t.macdScore)}</div></div>
+ <div class="tech"><h3>支撐 / 壓力</h3><div class="main">${fmtP(l.support)} / ${fmtP(l.resistance)}</div><div class="subline">距支撐 ${fmtPct(l.sDist)} · ${l.sTouches} 次反應<br>距壓力 ${fmtPct(l.rDist)} · ${l.rTouches} 次反應</div><div class="miniPct ${cls(mean([l.sStrength,l.rStrength]))}">區域強度 ${fmtPct(mean([l.sStrength,l.rStrength]))}</div></div>
+ <div class="tech"><h3>4H 爆發準備度</h3><div class="main ${cls(b.score)}">${fmtPct(b.score)}</div><div class="subline">${b.direction}<br>ATR壓縮 ${fmtPct(b.atrScore)} · BB壓縮 ${fmtPct(b.bbScore)}<br>量縮 ${fmtPct(b.volScore)} · 區間壓縮 ${fmtPct(b.rangeScore)}</div></div>
+ <div class="tech"><h3>局部 Wyckoff</h3><div class="main">${y.stage}</div><div class="subline">90D 區間位置 ${fmtPct(y.position)}<br>${wyEvent}</div><div class="miniPct ${cls(y.score)}">候選信心 ${fmtPct(y.score)}</div></div>`;
 }
 function renderDetails(q){
  $("dimensionCards").innerHTML=Object.keys(WGT).map(k=>{const d=q.dims[k];return `<div class="dim"><h3>${LAB[k]} · ${WGT[k]}%</h3><div class="pct ${cls(d.achievement)}">${fmtPct(d.achievement)}</div><small>資料覆蓋 ${d.coverage.toFixed(0)}%</small><div class="bar"><i style="width:${Number.isFinite(d.achievement)?d.achievement:0}%"></i></div></div>`}).join("");
@@ -216,23 +303,25 @@ function renderCurrent(){
  if(!S.locked)renderSnapshot(q,true);
 }
 function timeVal(t){if(typeof t==="number")return t*1000;if(t&&typeof t==="object"&&"year"in t)return Date.UTC(t.year,t.month-1,t.day);return NaN}
+function pointEndTs(t){const b=timeVal(t);if(!Number.isFinite(b))return NaN;if(S.tf==="4H")return b+4*3600000-1;if(S.tf==="1D")return b+86400000-1;if(S.tf==="1W")return b+7*86400000-1;if(S.tf==="1M"){const d=new Date(b);return Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1)-1}return b}
 function setupChart(){
  const el=$("chart");S.chart=LightweightCharts.createChart(el,{layout:{background:{color:"#07131e"},textColor:"#9db0c1"},grid:{vertLines:{color:"#102434"},horzLines:{color:"#102434"}},rightPriceScale:{borderColor:"#20384c"},timeScale:{borderColor:"#20384c",timeVisible:true},crosshair:{mode:LightweightCharts.CrosshairMode.Normal}});
  S.candle=S.chart.addCandlestickSeries({upColor:"#34d399",downColor:"#fb7185",borderVisible:false,wickUpColor:"#34d399",wickDownColor:"#fb7185"});
  new ResizeObserver(()=>S.chart.applyOptions({width:el.clientWidth,height:el.clientHeight})).observe(el);
- S.chart.subscribeCrosshairMove(p=>{if(S.locked||!p.time)return;const ts=timeVal(p.time)+86399999,q=calc(Math.min(ts,Date.now()));if(q)renderSnapshot(q,false)});
- S.chart.subscribeClick(p=>{if(!p.time)return;S.locked=true;S.lockedTs=timeVal(p.time)+86399999;const q=calc(Math.min(S.lockedTs,Date.now()));if(q)renderSnapshot(q,false)});
+ S.chart.subscribeCrosshairMove(p=>{if(S.locked||!p.time)return;const ts=pointEndTs(p.time),q=calc(Math.min(ts,Date.now()));if(q)renderSnapshot(q,false)});
+ S.chart.subscribeClick(p=>{if(!p.time)return;S.locked=true;S.lockedTs=pointEndTs(p.time);const q=calc(Math.min(S.lockedTs,Date.now()));if(q)renderSnapshot(q,false)});
  drawChart();
 }
 function chartRows(){return S.tf==="4H"?S.H4:S.tf==="1D"?S.D:S.tf==="1W"?S.W:S.M}
 function drawChart(){
- if(!S.chart)return;const rows=chartRows(),max=S.tf==="4H"?900:S.tf==="1D"?1200:S.tf==="1W"?520:180,x=rows.slice(-max);
+ if(!S.chart)return;const x=chartRows(),win=S.tf==="4H"?420:S.tf==="1D"?365:S.tf==="1W"?156:72;
  S.candle.setData(x.map(c=>({time:Math.floor(c.ot/1000),open:c.o,high:c.h,low:c.l,close:c.c})));
  for(const s of S.emaLines)S.chart.removeSeries(s);S.emaLines=[];
  const periods=S.tf==="1M"?[20]:[20,35,55],colors=["#34d399","#60a5fa","#fbbf24"];
  for(let j=0;j<periods.length;j++){const p=periods[j],es=emaSeries(x.map(c=>c.c),p),ls=S.chart.addLineSeries({color:colors[j],lineWidth:2,priceLineVisible:false,lastValueVisible:false});ls.setData(es.map((v,i)=>Number.isFinite(v)?{time:Math.floor(x[i].ot/1000),value:v}:null).filter(Boolean));S.emaLines.push(ls)}
- S.chart.timeScale().fitContent();
+ if(x.length)S.chart.timeScale().setVisibleLogicalRange({from:Math.max(0,x.length-win),to:x.length+3});
 }
+function focusChart(ts){if(!S.chart)return;const dayMs=86400000,span=S.tf==="4H"?45*dayMs:S.tf==="1D"?220*dayMs:S.tf==="1W"?900*dayMs:1800*dayMs;S.chart.timeScale().setVisibleRange({from:Math.floor((ts-span)/1000),to:Math.floor((ts+span)/1000)})}
 async function load(){
  const [h4h,dh,wh,mh,e,o]=await Promise.all([
   optional("data/binance_4h.json"),optional("data/binance_1d.json"),optional("data/binance_1w.json"),optional("data/binance_1M.json"),
@@ -245,6 +334,6 @@ async function load(){
  setInterval(async()=>{try{await refreshKlines()}catch(e){}},300000);
 }
 document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{S.tf=b.dataset.tf;document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x===b));drawChart()});
-$("nowBtn").onclick=()=>{S.locked=false;S.lockedTs=null;renderCurrent();S.chart.timeScale().scrollToRealTime()};
-$("goDate").onclick=()=>{const v=$("datePick").value;if(!v)return;const ts=new Date(v+"T23:59:59Z").getTime();S.locked=true;S.lockedTs=ts;const q=calc(ts);if(q)renderSnapshot(q,false)};
+$("nowBtn").onclick=()=>{S.locked=false;S.lockedTs=null;drawChart();renderCurrent();S.chart.timeScale().scrollToRealTime()};
+$("goDate").onclick=()=>{const v=$("datePick").value;if(!v)return;const ts=new Date(v+"T23:59:59Z").getTime();S.locked=true;S.lockedTs=ts;const q=calc(ts);if(q){renderSnapshot(q,false);focusChart(ts)}};
 load().catch(e=>{$("liveMeta").textContent="資料載入失敗："+e.message});
