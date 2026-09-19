@@ -133,7 +133,7 @@ function phaseProgress(phase,q){
  if(phase==="BOTTOMING")return clamp((q.price>q.wtop?30:q.price>q.wbot?15:0)+Math.min(q.slopes/4,1)*30+(q.bosMinor?25:0)+Math.min(q.stClosed/2,1)*15);
  if(phase==="RECOVERY")return clamp(Math.min(q.stClosed/3,1)*40+(q.price>q.wtop?20:0)+Math.min(q.slopes/5,1)*20+(q.bosMinor?10:0)+(q.et&&q.et.seven>0?10:0));
  if(phase==="EARLY_BULL")return clamp(Math.min(q.ordered/6,1)*50+(q.weekBull?25:0)+(q.price>q.wtop?15:0)+Math.min(q.slopes/8,1)*10);
- if(phase==="MID_BULL")return clamp((q.drawdown>-10?50:25)+(q.ordered>=5?20:0)+(q.weekBull?20:0)+(q.et&&q.et.fourteen>1000?10:0));
+ if(phase==="MID_BULL"){const maturity=clamp((q.cycleAge||0)/800*100),ath=clamp((q.drawdown+20)/15*100),structure=mean([q.ordered/7*100,q.slopes/8*100]);return clamp(maturity*.45+ath*.25+structure*.30);}
  if(phase==="LATE_BULL")return clamp((q.distWarn?60:20)+(q.price<q.wtop?20:0)+(q.weekBear?20:0));
  if(phase==="DISTRIBUTION")return clamp((q.hardBear?70:0)+(q.price<q.wbot?15:0)+(q.weekBear?15:0));
  return 0;
@@ -149,7 +149,7 @@ function hold(counter,key,cond){
  counter[key]=cond?(counter[key]||0)+1:0;
  return counter[key];
 }
-function transitionPhase(phase,q,counter,age){
+function transitionPhase(phase,q,counter,age,cycleAge){
  const weeklyBreak=q.price<q.wbot&&q.slopes<=3;
  const bottomCandidate=q.drawdown<=-20&&q.price>q.wbot&&q.slopes>=2&&q.trend!=="BEARISH";
  if(phase==="BEAR"){
@@ -164,12 +164,11 @@ function transitionPhase(phase,q,counter,age){
    if(hold(counter,"early_mid",q.midBull,14)>=14)return "MID_BULL";
    if(hold(counter,"early_fail",weeklyBreak,14)>=14)return "RECOVERY";
  }else if(phase==="MID_BULL"){
-   const agingBull=age>=90&&q.drawdown>-10&&q.ordered>=5&&q.slopes>=6;
-   if(hold(counter,"mid_late",agingBull,10)>=10)return "LATE_BULL";
+   const cycleMature=cycleAge>=800&&q.drawdown>-8&&q.ordered>=6&&q.slopes>=6&&q.price>q.wtop;
+   if(hold(counter,"mid_late",cycleMature,14)>=14)return "LATE_BULL";
    if(hold(counter,"mid_fail",weeklyBreak,14)>=14)return "EARLY_BULL";
  }else if(phase==="LATE_BULL"){
    if(hold(counter,"late_dist",q.distWarn,7)>=7)return "DISTRIBUTION";
-   if(hold(counter,"late_mid",q.trend==="BULLISH"&&q.drawdown>-8&&!q.distWarn,14)>=14)return "MID_BULL";
  }else if(phase==="DISTRIBUTION"){
    if(hold(counter,"dist_bear",q.hardBear||(weeklyBreak&&q.drawdown<=-20),7)>=7)return "BEAR";
    if(hold(counter,"dist_recover",q.trend==="BULLISH"&&q.drawdown>-10,14)>=14)return "LATE_BULL";
@@ -177,16 +176,20 @@ function transitionPhase(phase,q,counter,age){
  return phase;
 }
 function buildPhasePath(){
- let phase=null,counter={},age=0,path=[];
+ let phase=null,counter={},age=0,cycleAge=0,path=[];
  for(const d of S.D){
    const q=calc(d.ct,null,true);
    if(!q)continue;
-   if(!phase){phase=initialPhase(q);age=1;}
+   const prev=phase;
+   if(!phase){phase=initialPhase(q);age=1;cycleAge=phase==="BEAR"?0:1;}
    else{
-     const next=transitionPhase(phase,q,counter,age);
+     const next=transitionPhase(phase,q,counter,age,cycleAge);
      if(next!==phase){phase=next;counter={};age=1;}else age++;
+     if(phase==="BEAR")cycleAge=0;
+     else if(prev==="BEAR"&&phase==="BOTTOMING")cycleAge=1;
+     else cycleAge=cycleAge?cycleAge+1:1;
    }
-   path.push({ts:d.ct,phase,age});
+   path.push({ts:d.ct,phase,age,cycleAge});
  }
  S.phasePath=path;
 }
@@ -256,7 +259,7 @@ function calc(ts,livePriceOverride=null,rawOnly=false){
  const base={ts,price,confidence:conf,coverage:cov,dims,stLive,stClosed,signedLive,signedClosed,slopes,ordered,bosMinor,bosMajor,minor,major,keylow,et,delta,mvrv,wtop,wbot,weekBull,weekBear,cycleHigh,drawdown,trend,recoveryStrong,earlyConfirmed,midBull,hardBear,distWarn};
  if(rawOnly)return base;
  const ps=phaseAt(ts),phase=ps?.phase||initialPhase(base);
- base.phase=phase;
+ base.phase=phase;base.cycleAge=ps?.cycleAge||0;
  base.regime=PHASE_LABEL[phase];
  base.nextProgress=phaseProgress(phase,base);
  base.nextLabel=NEXT_LABEL[phase];
