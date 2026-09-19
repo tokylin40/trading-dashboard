@@ -4,7 +4,7 @@ const $=id=>document.getElementById(id);
 const BASES=["https://data-api.binance.vision","https://api.binance.com","https://api1.binance.com"];
 const WGT={monthly:25,ema:25,dow:20,onchain:15,etf:15};
 const LAB={monthly:"月線連陽",ema:"EMA Ribbon",dow:"日線道氏",onchain:"鏈上成本",etf:"ETF資金流"};
-let S={D:[],W:[],M:[],ticker:null,etf:[],onchain:[],tf:"1D",locked:false,lockedTs:null,chart:null,candle:null,emaLines:[],phasePath:[]};
+let S={H4:[],D:[],W:[],M:[],ticker:null,etf:[],onchain:[],tf:"1D",locked:false,lockedTs:null,chart:null,candle:null,emaLines:[],phasePath:[]};
 
 function clamp(x,a=0,b=100){return Math.max(a,Math.min(b,x))}
 function mean(a){const z=a.filter(Number.isFinite);return z.length?z.reduce((s,v)=>s+v,0)/z.length:NaN}
@@ -15,6 +15,18 @@ function mapK(k){return {ot:+k[0],o:+k[1],h:+k[2],l:+k[3],c:+k[4],v:+k[5],ct:+k[
 async function fj(url){const r=await fetch(url,{cache:"no-store"});if(!r.ok)throw new Error(r.status);return r.json()}
 async function binance(path){let e;for(const b of BASES){try{return await fj(b+path)}catch(x){e=x}}throw e}
 async function optional(path){try{return await fj(path+"?ts="+Date.now())}catch(e){return []}}
+function mergeBars(a,b){return [...new Map([...a,...b].map(x=>[x.ot,x])).values()].sort((x,y)=>x.ot-y.ot)}
+async function refreshKlines(){
+ const [h4,d,w,m,t]=await Promise.all([
+  binance("/api/v3/klines?symbol=BTCUSDT&interval=4h&limit=1000"),
+  binance("/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=1000"),
+  binance("/api/v3/klines?symbol=BTCUSDT&interval=1w&limit=500"),
+  binance("/api/v3/klines?symbol=BTCUSDT&interval=1M&limit=180"),
+  binance("/api/v3/ticker/24hr?symbol=BTCUSDT")
+ ]);
+ S.H4=mergeBars(S.H4,h4.map(mapK));S.D=mergeBars(S.D,d.map(mapK));S.W=mergeBars(S.W,w.map(mapK));S.M=mergeBars(S.M,m.map(mapK));S.ticker=t;
+ buildPhasePath();renderCurrent();if(S.chart)drawChart();
+}
 
 function emaSeries(vals,p){let out=new Array(vals.length).fill(null);if(vals.length<p)return out;let e=mean(vals.slice(0,p)),a=2/(p+1);out[p-1]=e;for(let i=p;i<vals.length;i++){e=vals[i]*a+e*(1-a);out[i]=e}return out}
 function pivots(c,l=2,r=2){let hi=[],lo=[];for(let i=l;i<c.length-r;i++){let H=true,L=true;for(let j=i-l;j<=i+r;j++){if(j===i)continue;if(c[j].h>=c[i].h)H=false;if(c[j].l<=c[i].l)L=false}if(H)hi.push({i,p:c[i].h,t:c[i].ot});if(L)lo.push({i,p:c[i].l,t:c[i].ot})}return {hi,lo}}
@@ -212,9 +224,9 @@ function setupChart(){
  S.chart.subscribeClick(p=>{if(!p.time)return;S.locked=true;S.lockedTs=timeVal(p.time)+86399999;const q=calc(Math.min(S.lockedTs,Date.now()));if(q)renderSnapshot(q,false)});
  drawChart();
 }
-function chartRows(){return S.tf==="1D"?S.D:S.tf==="1W"?S.W:S.M}
+function chartRows(){return S.tf==="4H"?S.H4:S.tf==="1D"?S.D:S.tf==="1W"?S.W:S.M}
 function drawChart(){
- if(!S.chart)return;const rows=chartRows(),max=S.tf==="1D"?500:S.tf==="1W"?260:120,x=rows.slice(-max);
+ if(!S.chart)return;const rows=chartRows(),max=S.tf==="4H"?900:S.tf==="1D"?1200:S.tf==="1W"?520:180,x=rows.slice(-max);
  S.candle.setData(x.map(c=>({time:Math.floor(c.ot/1000),open:c.o,high:c.h,low:c.l,close:c.c})));
  for(const s of S.emaLines)S.chart.removeSeries(s);S.emaLines=[];
  const periods=S.tf==="1M"?[20]:[20,35,55],colors=["#34d399","#60a5fa","#fbbf24"];
@@ -222,15 +234,15 @@ function drawChart(){
  S.chart.timeScale().fitContent();
 }
 async function load(){
- const [d,w,m,t,e,o]=await Promise.all([
-  binance("/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=1000"),
-  binance("/api/v3/klines?symbol=BTCUSDT&interval=1w&limit=500"),
-  binance("/api/v3/klines?symbol=BTCUSDT&interval=1M&limit=180"),
-  binance("/api/v3/ticker/24hr?symbol=BTCUSDT"),
+ const [h4h,dh,wh,mh,e,o]=await Promise.all([
+  optional("data/binance_4h.json"),optional("data/binance_1d.json"),optional("data/binance_1w.json"),optional("data/binance_1M.json"),
   optional("data/etf_history.json"),optional("data/onchain_history.json")
  ]);
- S.D=d.map(mapK);S.W=w.map(mapK);S.M=m.map(mapK);S.ticker=t;S.etf=Array.isArray(e)?e:[];S.onchain=Array.isArray(o)?o:[];
- buildPhasePath();setupChart();renderCurrent();setInterval(async()=>{try{S.ticker=await binance("/api/v3/ticker/24hr?symbol=BTCUSDT");renderCurrent()}catch(e){}},15000);
+ S.H4=(Array.isArray(h4h)?h4h:[]).map(mapK);S.D=(Array.isArray(dh)?dh:[]).map(mapK);S.W=(Array.isArray(wh)?wh:[]).map(mapK);S.M=(Array.isArray(mh)?mh:[]).map(mapK);
+ S.etf=Array.isArray(e)?e:[];S.onchain=Array.isArray(o)?o:[];
+ await refreshKlines();setupChart();renderCurrent();
+ setInterval(async()=>{try{S.ticker=await binance("/api/v3/ticker/24hr?symbol=BTCUSDT");renderCurrent()}catch(e){}},15000);
+ setInterval(async()=>{try{await refreshKlines()}catch(e){}},300000);
 }
 document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{S.tf=b.dataset.tf;document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x===b));drawChart()});
 $("nowBtn").onclick=()=>{S.locked=false;S.lockedTs=null;renderCurrent();S.chart.timeScale().scrollToRealTime()};

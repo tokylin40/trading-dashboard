@@ -10,6 +10,39 @@ DATA.mkdir(exist_ok=True)
 
 def get(url,**kw):
     r=S.get(url,timeout=30,**kw);r.raise_for_status();return r
+
+BINANCE_BASES=["https://data-api.binance.vision","https://api.binance.com","https://api1.binance.com"]
+START_MS=int(datetime(2017,8,17,tzinfo=timezone.utc).timestamp()*1000)
+
+def fetch_binance_klines(interval,start_ms):
+    err=None
+    for base in BINANCE_BASES:
+        try:
+            return get(base+"/api/v3/klines",params={"symbol":"BTCUSDT","interval":interval,"startTime":int(start_ms),"limit":1000}).json()
+        except Exception as e:err=e
+    raise err
+
+def slim_kline(k):
+    return [int(k[0]),float(k[1]),float(k[2]),float(k[3]),float(k[4]),float(k[5]),int(k[6]),int(k[8])]
+
+def update_binance_history(interval):
+    p=DATA/f"binance_{interval}.json"
+    try: rows=json.loads(p.read_text(encoding="utf-8")) if p.exists() else []
+    except: rows=[]
+    start=int(rows[-1][0]) if rows else START_MS
+    merged={int(x[0]):x for x in rows}
+    for _ in range(40):
+        page=fetch_binance_klines(interval,start)
+        if not page:break
+        for k in page: merged[int(k[0])]=slim_kline(k)
+        nxt=int(page[-1][6])+1
+        if nxt<=start:break
+        start=nxt
+        if len(page)<1000:break
+        time.sleep(0.05)
+    out=[merged[k] for k in sorted(merged)]
+    p.write_text(json.dumps(out,separators=(",",":")),encoding="utf-8")
+    return len(out)
 def parse_farside():
     soup=BeautifulSoup(get("https://farside.co.uk/bitcoin-etf-flow-all-data/").text,"html.parser");out=[]
     for tr in soup.select("tr"):
@@ -85,6 +118,9 @@ def build_onchain():
     (DATA/"onchain_meta.json").write_text(json.dumps({"generated_at":datetime.now(timezone.utc).isoformat(),"source":"BGeometrics","note":"Free endpoints may be delayed."},ensure_ascii=False,indent=2),encoding="utf-8")
 
 def main():
+    for interval in ("4h","1d","1w","1M"):
+        try:print("Binance",interval,update_binance_history(interval),"rows")
+        except Exception as e:print("Binance",interval,"update failed:",e)
     try:(DATA/"etf_history.json").write_text(json.dumps(parse_farside(),ensure_ascii=False,separators=(",",":")),encoding="utf-8")
     except Exception as e:print("ETF update failed:",e)
     if onchain_due():
