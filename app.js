@@ -340,7 +340,7 @@ function renderSnapshot(q,live=false){
  $("snapDate").textContent=live?"現在":day(q.ts);$("snapPrice").textContent=fmtP(q.price);$("snapRegime").textContent=q.regime;$("snapConfidence").textContent=fmtPct(q.confidence);$("snapCoverage").textContent=fmtPct(q.coverage);
  $("snapTrend").textContent=q.trend==="BULLISH"?"偏多":q.trend==="BEARISH"?"偏空":"中性";
  $("snapNext").textContent=fmtPct(q.nextProgress);$("snapNextLabel").textContent=q.nextLabel||"--";
- $("snapKeda").textContent=q.keda?(q.keda.state==="ON"?"多頭 ON":"多頭 OFF"):"N/A";
+ $("snapKeda").textContent=q.keda?q.keda.state:"N/A";
  $("snapMonth").textContent=`即時 ${q.stLive} / 已收 ${q.stClosed}`;$("snapWeekSlope").textContent=`${q.slopes}/8`;$("snapWeekAlign").textContent=`${q.ordered}/7`;
  $("snapBos").textContent=q.bosMajor?"主要 BOS":q.bosMinor?"小波段 BOS":"未突破";$("snapEtf7").textContent=q.et?`${q.et.seven>=0?"+":""}${q.et.seven.toFixed(1)}M`:"N/A";$("snapRp").textContent=Number.isFinite(q.delta)?`${q.delta>=0?"+":""}${q.delta.toFixed(1)}%`:"N/A";
  $("lockState").textContent=live?"LIVE":S.locked?"LOCKED":"HOVER";$("detailTitle").textContent=live?"當下指標達成率":`${day(q.ts)} 當時指標達成率`;
@@ -351,9 +351,9 @@ function renderSnapshot(q,live=false){
 function renderKeda(q){
  const k=q.keda,bt=kedaBacktestAsOf(q.ts);
  if(!k){$("kedaStatus").textContent="N/A";return}
- $("kedaStatus").textContent=k.state==="ON"?"多頭 ON":"多頭 OFF";
- $("kedaStatus").className="kedaStatus "+(k.state==="ON"?"good":"risk");
- $("kedaSince").textContent=(k.state==="ON"?"ON 自 ":"OFF 自 ")+day(k.since)+"｜僅已收週線可改變狀態";
+ $("kedaStatus").textContent=k.state;
+ $("kedaStatus").className="kedaStatus "+(k.state==="ON"?"good":"watch");
+ $("kedaSince").textContent=k.state==="ON"?("多頭趨勢成立｜自 "+day(k.since)+" 起｜僅已收週線可改變狀態"):("多頭趨勢未成立｜自 "+day(k.since)+" 起｜OFF ≠ 做空");
  $("kedaScore").textContent=fmtPct(k.score);
  $("kedaEma").textContent=fmtPct(k.emaScore);$("kedaEmaDetail").textContent="斜率 "+k.slopes+"/8 · 排列 "+k.ordered+"/7";
  $("kedaMacd").textContent=k.macd.state;$("kedaMacdDetail").textContent="MACD分數 "+fmtPct(k.macd.score);
