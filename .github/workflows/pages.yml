@@ -25,6 +25,8 @@ jobs:
         run: node scripts/regression_cycle_test.js
       - name: Keda trend regression guard
         run: node scripts/regression_keda_test.js
+      - name: Fibonacci regression guard
+        run: node scripts/regression_fib_test.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

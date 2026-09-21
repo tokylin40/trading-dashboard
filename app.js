@@ -4,7 +4,7 @@ const $=id=>document.getElementById(id);
 const BASES=["https://data-api.binance.vision","https://api.binance.com","https://api1.binance.com"];
 const WGT={monthly:25,ema:25,dow:20,onchain:15,etf:15};
 const LAB={monthly:"月線連陽",ema:"EMA Ribbon",dow:"日線道氏",onchain:"鏈上成本",etf:"ETF資金流"};
-let S={H4:[],D:[],W:[],M:[],ticker:null,etf:[],onchain:[],tf:"1D",locked:false,lockedTs:null,chart:null,candle:null,emaLines:[],phasePath:[],kedaPath:[]};
+let S={H4:[],D:[],W:[],M:[],ticker:null,etf:[],onchain:[],tf:"1D",locked:false,lockedTs:null,chart:null,candle:null,emaLines:[],levelLines:[],phasePath:[],kedaPath:[]};
 
 function clamp(x,a=0,b=100){return Math.max(a,Math.min(b,x))}
 function mean(a){const z=a.filter(Number.isFinite);return z.length?z.reduce((s,v)=>s+v,0)/z.length:NaN}
@@ -68,6 +68,70 @@ function supportResistance(bars,price){
  const sStrength=clamp(30+(sup.touches-1)*18),rStrength=clamp(30+(res.touches-1)*18);
  return {support:sup.price,resistance:res.price,sTouches:sup.touches,rTouches:res.touches,sStrength,rStrength,sDist:(price/sup.price-1)*100,rDist:(res.price/price-1)*100};
 }
+
+function compressPivots(points){
+ const out=[];
+ for(const p of points.sort((a,b)=>a.t-b.t)){
+   const last=out.at(-1);
+   if(!last||last.type!==p.type)out.push(p);
+   else if((p.type==="H"&&p.p>last.p)||(p.type==="L"&&p.p<last.p))out[out.length-1]=p;
+ }
+ return out;
+}
+function confluenceLevel(items,price,side,tol=.012){
+ const valid=items.filter(x=>Number.isFinite(x.price)&&(side==="S"?x.price<price:x.price>price));
+ if(!valid.length)return null;
+ const clusters=[];
+ for(const it of valid.sort((a,b)=>a.price-b.price)){
+   let cl=clusters.find(x=>Math.abs(it.price-x.price)/x.price<=tol);
+   if(!cl){cl={price:it.price,items:[it]};clusters.push(cl)}
+   else{cl.items.push(it);cl.price=mean(cl.items.map(z=>z.price))}
+ }
+ for(const cl of clusters){
+   cl.sources=[...new Set(cl.items.map(x=>x.source))];
+   cl.strength=clamp(30+(cl.sources.length-1)*22+(cl.items.length-1)*8);
+   cl.distance=Math.abs(cl.price/price-1)*100;
+ }
+ clusters.sort((a,b)=>a.distance-b.distance||b.strength-a.strength);
+ return clusters[0];
+}
+function swingFibInfo(D,W,price){
+ const x=D.slice(-520);if(x.length<100)return {direction:"N/A",available:false};
+ const pv=pivots(x,3,3),pts=compressPivots([
+  ...pv.hi.map(z=>({type:"H",p:z.p,t:z.t})),
+  ...pv.lo.map(z=>({type:"L",p:z.p,t:z.t}))
+ ]);
+ const vals=x.map(z=>z.c),e55=emaSeries(vals,55).at(-1),preferred=price>=e55?"UP":"DOWN";
+ const pairs=[];
+ for(let i=1;i<pts.length;i++){
+   const a=pts[i-1],b=pts[i];if(a.type===b.type)continue;
+   const dir=a.type==="L"&&b.type==="H"?"UP":"DOWN",range=Math.abs(b.p-a.p),pct=range/((a.p+b.p)/2);
+   if(pct>=.055)pairs.push({a,b,dir,range,pct});
+ }
+ let pair=[...pairs].reverse().find(z=>z.dir===preferred);
+ if(!pair)pair=pairs.at(-1);
+ if(!pair)return {direction:"N/A",available:false};
+ const low=pair.dir==="UP"?pair.a.p:pair.b.p,high=pair.dir==="UP"?pair.b.p:pair.a.p,range=high-low;
+ const lv={};
+ for(const r of [.236,.382,.5,.618,.65,.786])lv[String(r)]=pair.dir==="UP"?high-range*r:low+range*r;
+ lv["1.272"]=pair.dir==="UP"?high+range*.272:low-range*.272;
+ lv["1.618"]=pair.dir==="UP"?high+range*.618:low-range*.618;
+ const sr=supportResistance(D,price);
+ const demas=[20,35,55].map(p=>({p,v:emaSeries(D.map(z=>z.c),p).at(-1)}));
+ const wemas=[20,35,55].map(p=>({p,v:emaSeries(W.map(z=>z.c),p).at(-1)}));
+ const candidates=[
+   ...Object.entries(lv).map(([r,v])=>({price:v,source:"Fib "+r})),
+   {price:sr.support,source:"Pivot支撐"},{price:sr.resistance,source:"Pivot壓力"},
+   ...demas.map(z=>({price:z.v,source:"D EMA"+z.p})),
+   ...wemas.map(z=>({price:z.v,source:"W EMA"+z.p}))
+ ];
+ const support=confluenceLevel(candidates,price,"S"),resistance=confluenceLevel(candidates,price,"R");
+ const gp1=lv["0.618"],gp2=lv["0.65"];
+ return {available:true,direction:pair.dir,low,high,startTs:pair.a.t,endTs:pair.b.t,levels:lv,
+   goldenLow:Math.min(gp1,gp2),goldenHigh:Math.max(gp1,gp2),
+   support,resistance,rangePct:range/low*100};
+}
+
 function atrValue(bars,n=14){if(bars.length<n+1)return NaN;const tr=[];for(let i=bars.length-n;i<bars.length;i++){const p=bars[i-1].c,b=bars[i];tr.push(Math.max(b.h-b.l,Math.abs(b.h-p),Math.abs(b.l-p)))}return mean(tr)}
 function breakoutInfo(bars){
  const x=bars.slice(-180);if(x.length<80)return {score:NaN,direction:"N/A",atrScore:NaN,bbScore:NaN,volScore:NaN,rangeScore:NaN};
@@ -99,9 +163,9 @@ function wyckoffInfo(bars,price,trend,drawdown){
  return {stage,score,spring,utad,position:clamp(pos*100),springAt,utadAt};
 }
 function technicalInfo(D,W,H4,price,trend,drawdown){
- const d4=dowInfo(H4,price),dd=dowInfo(D,price),dw=dowInfo(W,price),m4=macdInfo(H4),md=macdInfo(D),mw=macdInfo(W),sr=supportResistance(D,price),bo=breakoutInfo(H4),wy=wyckoffInfo(D,price,trend,drawdown);
+ const d4=dowInfo(H4,price),dd=dowInfo(D,price),dw=dowInfo(W,price),m4=macdInfo(H4),md=macdInfo(D),mw=macdInfo(W),sr=supportResistance(D,price),fib=swingFibInfo(D,W,price),bo=breakoutInfo(H4),wy=wyckoffInfo(D,price,trend,drawdown);
  const dowScore=.2*d4.score+.5*dd.score+.3*dw.score,macdScore=.2*m4.score+.5*md.score+.3*mw.score;
- return {dow4h:d4,dowDaily:dd,dowWeekly:dw,dowScore,macd4h:m4,macdDaily:md,macdWeekly:mw,macdScore,levels:sr,breakout:bo,wyckoff:wy};
+ return {dow4h:d4,dowDaily:dd,dowWeekly:dw,dowScore,macd4h:m4,macdDaily:md,macdWeekly:mw,macdScore,levels:sr,fib,breakout:bo,wyckoff:wy};
 }
 
 function kedaRawInfo(W){
@@ -335,6 +399,27 @@ function calc(ts,livePriceOverride=null,rawOnly=false){
  return base;
 }
 function cls(v){return !Number.isFinite(v)?"na":v>=70?"good":v>=40?"watch":"risk"}
+
+function clearLevelLines(){
+ if(!S.candle)return;
+ for(const l of S.levelLines){try{S.candle.removePriceLine(l)}catch(e){}}
+ S.levelLines=[];
+}
+function addLevelLine(price,title,color){
+ if(!S.candle||!Number.isFinite(price))return;
+ S.levelLines.push(S.candle.createPriceLine({price,title,color,lineWidth:1,lineStyle:2,axisLabelVisible:true}));
+}
+function updateSwingLines(q){
+ clearLevelLines();const f=q?.tech?.fib;if(!f?.available)return;
+ const raw=[
+  {p:f.low,t:"Swing L",c:"#60a5fa"},{p:f.high,t:"Swing H",c:"#60a5fa"},
+  {p:f.levels["0.618"],t:"Fib 0.618",c:"#fbbf24"},
+  {p:f.support?.price,t:"S",c:"#34d399"},{p:f.resistance?.price,t:"R",c:"#fb7185"}
+ ];
+ const keep=[];
+ for(const z of raw){if(!Number.isFinite(z.p))continue;if(keep.some(k=>Math.abs(k.p-z.p)/z.p<.003))continue;keep.push(z);addLevelLine(z.p,z.t,z.c)}
+}
+
 function renderSnapshot(q,live=false){
  if(!q)return;
  $("snapDate").textContent=live?"現在":day(q.ts);$("snapPrice").textContent=fmtP(q.price);$("snapRegime").textContent=q.regime;$("snapConfidence").textContent=fmtPct(q.confidence);$("snapCoverage").textContent=fmtPct(q.coverage);
@@ -345,7 +430,7 @@ function renderSnapshot(q,live=false){
  $("snapBos").textContent=q.bosMajor?"主要 BOS":q.bosMinor?"小波段 BOS":"未突破";$("snapEtf7").textContent=q.et?`${q.et.seven>=0?"+":""}${q.et.seven.toFixed(1)}M`:"N/A";$("snapRp").textContent=Number.isFinite(q.delta)?`${q.delta>=0?"+":""}${q.delta.toFixed(1)}%`:"N/A";
  $("lockState").textContent=live?"LIVE":S.locked?"LOCKED":"HOVER";$("detailTitle").textContent=live?"當下指標達成率":`${day(q.ts)} 當時指標達成率`;
  $("techTitle").textContent=live?"技術分析層":`${day(q.ts)} 技術分析層`;
- renderKeda(q);renderTech(q);renderDetails(q);
+ renderKeda(q);renderTech(q);renderDetails(q);if(live||S.locked)updateSwingLines(q);
 }
 
 function renderKeda(q){
@@ -362,12 +447,13 @@ function renderKeda(q){
 }
 function renderTech(q){
  const t=q.tech;if(!t){$("techCards").innerHTML="";return}
- const d4=t.dow4h,d=t.dowDaily,w=t.dowWeekly,m4=t.macd4h,m=t.macdDaily,mw=t.macdWeekly,l=t.levels,b=t.breakout,y=t.wyckoff;
+ const d4=t.dow4h,d=t.dowDaily,w=t.dowWeekly,m4=t.macd4h,m=t.macdDaily,mw=t.macdWeekly,l=t.levels,f=t.fib,b=t.breakout,y=t.wyckoff;
  const wyEvent=y.springAt>y.utadAt?"最近事件：Spring":y.utadAt>y.springAt?"最近事件：UTAD":"未偵測到明確 Spring / UTAD";
  $("techCards").innerHTML=`
  <div class="tech"><h3>道氏結構</h3><div class="main ${cls(t.dowScore)}">${d.high}/${d.low}</div><div class="subline">4H：${d4.high}/${d4.low} · ${d4.event}<br>日線：${d.state} · ${d.event}<br>週線：${w.high}/${w.low} · ${w.state}</div><div class="miniPct ${cls(t.dowScore)}">多頭結構 ${fmtPct(t.dowScore)}</div></div>
  <div class="tech"><h3>MACD 趨勢</h3><div class="main ${cls(t.macdScore)}">${m.state}</div><div class="subline">4H：${m4.state}<br>日線：${m.state} · Hist ${Number.isFinite(m.hist)?m.hist.toFixed(0):"N/A"}<br>週線：${mw.state}</div><div class="miniPct ${cls(t.macdScore)}">趨勢達成 ${fmtPct(t.macdScore)}</div></div>
  <div class="tech"><h3>支撐 / 壓力</h3><div class="main">${fmtP(l.support)} / ${fmtP(l.resistance)}</div><div class="subline">距支撐 ${fmtPct(l.sDist)} · ${l.sTouches} 次反應<br>距壓力 ${fmtPct(l.rDist)} · ${l.rTouches} 次反應</div><div class="miniPct ${cls(mean([l.sStrength,l.rStrength]))}">區域強度 ${fmtPct(mean([l.sStrength,l.rStrength]))}</div></div>
+ <div class="tech"><h3>波段 S/R + Fibonacci</h3><div class="main">${f.available?(f.direction==="UP"?"上升波段 ↑":"下降波段 ↓"):"N/A"}</div><div class="subline">${f.available?`錨點 ${fmtP(f.low)} ↔ ${fmtP(f.high)}<br>0.236 ${fmtP(f.levels["0.236"])} · 0.382 ${fmtP(f.levels["0.382"])} · 0.5 ${fmtP(f.levels["0.5"])}<br><b>黃金區 0.618–0.65</b> ${fmtP(f.goldenLow)} ~ ${fmtP(f.goldenHigh)}<br>0.786 ${fmtP(f.levels["0.786"])} · 1.272 ${fmtP(f.levels["1.272"])} · 1.618 ${fmtP(f.levels["1.618"])}`:"資料不足"}</div><div class="miniPct ${f.support?cls(f.support.strength):"na"}">共振支撐 ${f.support?fmtP(f.support.price)+" · "+fmtPct(f.support.strength):"N/A"}</div><div class="subline">共振壓力 ${f.resistance?fmtP(f.resistance.price)+" · "+fmtPct(f.resistance.strength):"N/A"}</div></div>
  <div class="tech"><h3>4H 爆發準備度</h3><div class="main ${cls(b.score)}">${fmtPct(b.score)}</div><div class="subline">${b.direction}<br>ATR壓縮 ${fmtPct(b.atrScore)} · BB壓縮 ${fmtPct(b.bbScore)}<br>量縮 ${fmtPct(b.volScore)} · 區間壓縮 ${fmtPct(b.rangeScore)}</div></div>
  <div class="tech"><h3>局部 Wyckoff</h3><div class="main">${y.stage}</div><div class="subline">90D 區間位置 ${fmtPct(y.position)}<br>${wyEvent}</div><div class="miniPct ${cls(y.score)}">候選信心 ${fmtPct(y.score)}</div></div>`;
 }
