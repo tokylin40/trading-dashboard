@@ -64,7 +64,13 @@
   <section class="panel">
     <div class="ph"><h2>BTC 歷史價格 + EMA</h2><div class="tabs"><button class="tab" data-tf="4H">4H</button><button class="tab on" data-tf="1D">1D</button><button class="tab" data-tf="1W">1W</button><button class="tab" data-tf="1M">1M</button></div></div>
     <div class="chartwrap">
-      <div id="chart"></div>
+      <div class="chartstack">
+        <div id="chart"></div>
+        <div class="oscbox">
+          <div class="oschead"><span><b>Trend Scalp (12,8)</b> · 警戒 ±75</span><span id="trendScalpStatus" class="pill">--</span></div>
+          <div id="trendScalp"></div>
+        </div>
+      </div>
       <aside class="snapshot">
         <div class="snaphead"><div><span class="muted">回看時間</span><h3 id="snapDate">現在</h3></div><span id="lockState" class="pill">LIVE</span></div>
         <div class="snapprice" id="snapPrice">--</div>

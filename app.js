@@ -4,7 +4,7 @@ const $=id=>document.getElementById(id);
 const BASES=["https://data-api.binance.vision","https://api.binance.com","https://api1.binance.com"];
 const WGT={monthly:25,ema:25,dow:20,onchain:15,etf:15};
 const LAB={monthly:"月線連陽",ema:"EMA Ribbon",dow:"日線道氏",onchain:"鏈上成本",etf:"ETF資金流"};
-let S={H4:[],D:[],W:[],M:[],ticker:null,etf:[],onchain:[],tf:"1D",locked:false,lockedTs:null,chart:null,candle:null,emaLines:[],levelLines:[],phasePath:[],kedaPath:[]};
+let S={H4:[],D:[],W:[],M:[],ticker:null,etf:[],onchain:[],tf:"1D",locked:false,lockedTs:null,chart:null,candle:null,emaLines:[],levelLines:[],trendChart:null,trendLine:null,trendHot:null,trendTop:null,trendBottom:null,phasePath:[],kedaPath:[]};
 
 function clamp(x,a=0,b=100){return Math.max(a,Math.min(b,x))}
 function mean(a){const z=a.filter(Number.isFinite);return z.length?z.reduce((s,v)=>s+v,0)/z.length:NaN}
@@ -30,6 +30,45 @@ async function refreshKlines(){
 }
 
 function emaSeries(vals,p){let out=new Array(vals.length).fill(null);if(vals.length<p)return out;let e=mean(vals.slice(0,p)),a=2/(p+1);out[p-1]=e;for(let i=p;i<vals.length;i++){e=vals[i]*a+e*(1-a);out[i]=e}return out}
+
+function trendScalpSeries(bars,ttfBars=12,t3Period=8,t3Hot=.7,t3Original=false){
+ const out=new Array(bars.length).fill(NaN);
+ if(bars.length<=ttfBars)return out;
+ const a=t3Hot,c1=-a*a*a,c2=3*a*a+3*a*a*a,c3=-6*a*a-3*a-3*a*a*a,c4=1+3*a+a*a*a+3*a*a;
+ t3Period=Math.max(1,t3Period);
+ const alpha=t3Original?2/(1+t3Period):2/(2+(t3Period-1)/2);
+ let w=[NaN,NaN,NaN,NaN,NaN,NaN];
+ for(let i=ttfBars;i<bars.length;i++){
+   const old=bars.slice(i-ttfBars,i),hh=Math.max(...old.map(x=>x.h)),ll=Math.min(...old.map(x=>x.l));
+   const buy=bars[i].h-ll,sell=hh-bars[i].l,den=.5*(buy+sell),raw=den?((buy-sell)/den*100):0;
+   if(!Number.isFinite(w[0]))w=[raw,raw,raw,raw,raw,raw];
+   else{
+     w[0]=w[0]+alpha*(raw-w[0]);
+     for(let j=1;j<6;j++)w[j]=w[j]+alpha*(w[j-1]-w[j]);
+   }
+   out[i]=c1*w[5]+c2*w[4]+c3*w[3]+c4*w[2];
+ }
+ return out;
+}
+function trendScalpState(vals){
+ const z=vals.filter(Number.isFinite);if(z.length<2)return {value:NaN,state:"N/A",kind:"na"};
+ const v=z.at(-1),p=z.at(-2);
+ if(p>75&&v<=75)return {value:v,state:"高檔回落確認",kind:"risk"};
+ if(v>75&&v<p)return {value:v,state:"頂部預警",kind:"risk"};
+ if(v>75)return {value:v,state:"過熱延伸",kind:"watch"};
+ if(p<-75&&v>=-75)return {value:v,state:"低檔回升確認",kind:"good"};
+ if(v<-75&&v>p)return {value:v,state:"底部預警",kind:"good"};
+ if(v<-75)return {value:v,state:"超賣延伸",kind:"watch"};
+ return {value:v,state:v>=0?"偏多中性":"偏空中性",kind:"na"};
+}
+function trendScalpAsOf(ts){
+ const rows=chartRows().filter(c=>c.ot<=ts),vals=trendScalpSeries(rows,12,8,.7,false);return trendScalpState(vals);
+}
+function updateTrendScalpStatus(ts){
+ const st=trendScalpAsOf(ts),el=$("trendScalpStatus");if(!el)return;
+ el.textContent=S.tf+"  "+(Number.isFinite(st.value)?st.value.toFixed(1):"N/A")+" · "+st.state;el.className="pill "+st.kind;
+}
+
 function pivots(c,l=2,r=2){let hi=[],lo=[];for(let i=l;i<c.length-r;i++){let H=true,L=true;for(let j=i-l;j<=i+r;j++){if(j===i)continue;if(c[j].h>=c[i].h)H=false;if(c[j].l<=c[i].l)L=false}if(H)hi.push({i,p:c[i].h,t:c[i].ot});if(L)lo.push({i,p:c[i].l,t:c[i].ot})}return {hi,lo}}
 function sma(a,n){return a.length>=n?mean(a.slice(-n)):NaN}
 function stdev(a){const m=mean(a);return Math.sqrt(mean(a.map(x=>(x-m)*(x-m))))}
@@ -430,7 +469,7 @@ function renderSnapshot(q,live=false){
  $("snapBos").textContent=q.bosMajor?"主要 BOS":q.bosMinor?"小波段 BOS":"未突破";$("snapEtf7").textContent=q.et?`${q.et.seven>=0?"+":""}${q.et.seven.toFixed(1)}M`:"N/A";$("snapRp").textContent=Number.isFinite(q.delta)?`${q.delta>=0?"+":""}${q.delta.toFixed(1)}%`:"N/A";
  $("lockState").textContent=live?"LIVE":S.locked?"LOCKED":"HOVER";$("detailTitle").textContent=live?"當下指標達成率":`${day(q.ts)} 當時指標達成率`;
  $("techTitle").textContent=live?"技術分析層":`${day(q.ts)} 技術分析層`;
- renderKeda(q);renderTech(q);renderDetails(q);if(live||S.locked)updateSwingLines(q);
+ renderKeda(q);renderTech(q);renderDetails(q);updateTrendScalpStatus(q.ts);if(live||S.locked)updateSwingLines(q);
 }
 
 function renderKeda(q){
@@ -475,20 +514,48 @@ function renderCurrent(){
 function timeVal(t){if(typeof t==="number")return t*1000;if(t&&typeof t==="object"&&"year"in t)return Date.UTC(t.year,t.month-1,t.day);return NaN}
 function pointEndTs(t){const b=timeVal(t);if(!Number.isFinite(b))return NaN;if(S.tf==="4H")return b+4*3600000-1;if(S.tf==="1D")return b+86400000-1;if(S.tf==="1W")return b+7*86400000-1;if(S.tf==="1M"){const d=new Date(b);return Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1)-1}return b}
 function setupChart(){
- const el=$("chart");S.chart=LightweightCharts.createChart(el,{layout:{background:{color:"#07131e"},textColor:"#9db0c1"},grid:{vertLines:{color:"#102434"},horzLines:{color:"#102434"}},rightPriceScale:{borderColor:"#20384c"},timeScale:{borderColor:"#20384c",timeVisible:true},crosshair:{mode:LightweightCharts.CrosshairMode.Normal}});
+ const el=$("chart"),osc=$("trendScalp");S.chart=LightweightCharts.createChart(el,{layout:{background:{color:"#07131e"},textColor:"#9db0c1"},grid:{vertLines:{color:"#102434"},horzLines:{color:"#102434"}},rightPriceScale:{borderColor:"#20384c"},timeScale:{borderColor:"#20384c",timeVisible:true},crosshair:{mode:LightweightCharts.CrosshairMode.Normal}});
+ S.trendChart=LightweightCharts.createChart(osc,{layout:{background:{color:"#07131e"},textColor:"#9db0c1"},grid:{vertLines:{color:"#102434"},horzLines:{color:"#102434"}},rightPriceScale:{borderColor:"#20384c",scaleMargins:{top:.12,bottom:.12}},timeScale:{borderColor:"#20384c",timeVisible:true},crosshair:{mode:LightweightCharts.CrosshairMode.Normal}});
  S.candle=S.chart.addCandlestickSeries({upColor:"#34d399",downColor:"#fb7185",borderVisible:false,wickUpColor:"#34d399",wickDownColor:"#fb7185"});
+ S.trendLine=S.trendChart.addLineSeries({color:"#9db0c1",lineWidth:2,priceLineVisible:false,lastValueVisible:true});
+ S.trendHot=S.trendChart.addHistogramSeries({priceLineVisible:false,lastValueVisible:false});
+ S.trendTop=S.trendLine.createPriceLine({price:75,color:"#22d3ee",lineWidth:1,lineStyle:2,axisLabelVisible:true,title:"+75"});
+ S.trendBottom=S.trendLine.createPriceLine({price:-75,color:"#fb923c",lineWidth:1,lineStyle:2,axisLabelVisible:true,title:"-75"});
+ S.trendLine.createPriceLine({price:0,color:"#506779",lineWidth:1,lineStyle:3,axisLabelVisible:false,title:"0"});
  new ResizeObserver(()=>S.chart.applyOptions({width:el.clientWidth,height:el.clientHeight})).observe(el);
+ new ResizeObserver(()=>S.trendChart.applyOptions({width:osc.clientWidth,height:osc.clientHeight})).observe(osc);
+ let sync=false;
+ S.chart.timeScale().subscribeVisibleLogicalRangeChange(r=>{if(sync||!r)return;sync=true;S.trendChart.timeScale().setVisibleLogicalRange(r);sync=false});
+ S.trendChart.timeScale().subscribeVisibleLogicalRangeChange(r=>{if(sync||!r)return;sync=true;S.chart.timeScale().setVisibleLogicalRange(r);sync=false});
  S.chart.subscribeCrosshairMove(p=>{if(S.locked||!p.time)return;const ts=pointEndTs(p.time),q=calc(Math.min(ts,Date.now()));if(q)renderSnapshot(q,false)});
  S.chart.subscribeClick(p=>{if(!p.time)return;S.locked=true;S.lockedTs=pointEndTs(p.time);const q=calc(Math.min(S.lockedTs,Date.now()));if(q)renderSnapshot(q,false)});
+ S.trendChart.subscribeCrosshairMove(p=>{if(S.locked||!p.time)return;const ts=pointEndTs(p.time),q=calc(Math.min(ts,Date.now()));if(q)renderSnapshot(q,false)});
+ S.trendChart.subscribeClick(p=>{if(!p.time)return;S.locked=true;S.lockedTs=pointEndTs(p.time);const q=calc(Math.min(S.lockedTs,Date.now()));if(q)renderSnapshot(q,false)});
  drawChart();
 }
 function chartRows(){return S.tf==="4H"?S.H4:S.tf==="1D"?S.D:S.tf==="1W"?S.W:S.M}
+function drawTrendScalp(x){
+ if(!S.trendChart||!S.trendLine||!S.trendHot)return;
+ const vals=trendScalpSeries(x,12,8,.7,false),line=[],hot=[];
+ for(let i=0;i<x.length;i++){
+   if(!Number.isFinite(vals[i]))continue;
+   const time=Math.floor(x[i].ot/1000),v=vals[i];
+   line.push({time,value:v});
+   if(v>75)hot.push({time,value:v,color:"rgba(34,211,238,.38)"});
+   else if(v<-75)hot.push({time,value:v,color:"rgba(251,146,60,.38)"});
+   else hot.push({time,value:0,color:"rgba(0,0,0,0)"});
+ }
+ S.trendLine.setData(line);S.trendHot.setData(hot);
+ const st=trendScalpState(vals),el=$("trendScalpStatus");
+ if(el){el.textContent=S.tf+"  "+(Number.isFinite(st.value)?st.value.toFixed(1):"N/A")+" · "+st.state;el.className="pill "+st.kind}
+}
 function drawChart(){
  if(!S.chart)return;const x=chartRows(),win=S.tf==="4H"?420:S.tf==="1D"?365:S.tf==="1W"?156:72;
  S.candle.setData(x.map(c=>({time:Math.floor(c.ot/1000),open:c.o,high:c.h,low:c.l,close:c.c})));
  for(const s of S.emaLines)S.chart.removeSeries(s);S.emaLines=[];
  const periods=S.tf==="1M"?[20]:[20,35,55],colors=["#34d399","#60a5fa","#fbbf24"];
  for(let j=0;j<periods.length;j++){const p=periods[j],es=emaSeries(x.map(c=>c.c),p),ls=S.chart.addLineSeries({color:colors[j],lineWidth:2,priceLineVisible:false,lastValueVisible:false});ls.setData(es.map((v,i)=>Number.isFinite(v)?{time:Math.floor(x[i].ot/1000),value:v}:null).filter(Boolean));S.emaLines.push(ls)}
+ drawTrendScalp(x);
  if(x.length)S.chart.timeScale().setVisibleLogicalRange({from:Math.max(0,x.length-win),to:x.length+3});
 }
 function focusChart(ts){if(!S.chart)return;const dayMs=86400000,span=S.tf==="4H"?45*dayMs:S.tf==="1D"?220*dayMs:S.tf==="1W"?900*dayMs:1800*dayMs;S.chart.timeScale().setVisibleRange({from:Math.floor((ts-span)/1000),to:Math.floor((ts+span)/1000)})}
