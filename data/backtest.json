@@ -1,12 +1,589 @@
 {
-  "generated_at": null,
+  "generated_at": "2026-09-23T07:56:41Z",
   "methodology": {
     "scope": "Technical gate only",
-    "important_limit": "Run GitHub Action 'Build Signal Backtest' to populate results."
+    "symbol": "BTCUSDT",
+    "evaluation_frequency": "Daily close",
+    "start": "2020-01-01",
+    "end": "2026-09-23",
+    "lookahead_control": "Only candles closed by each historical evaluation timestamp are used.",
+    "important_limit": "On-chain and MSTR/STRC are NOT included in this historical backtest yet."
   },
-  "summary_by_mode": {},
-  "summary_by_state": {},
-  "state_change_count": 0,
-  "daily_sample_count": 0,
-  "recent_state_changes": []
+  "summary_by_mode": {
+    "TRANSITION": {
+      "samples": 2105,
+      "7": {
+        "mean_pct": 0.784,
+        "median_pct": 0.423,
+        "positive_rate_pct": 53.0,
+        "n": 2098
+      },
+      "30": {
+        "mean_pct": 4.006,
+        "median_pct": 1.521,
+        "positive_rate_pct": 54.5,
+        "n": 2075
+      },
+      "60": {
+        "mean_pct": 10.171,
+        "median_pct": 5.785,
+        "positive_rate_pct": 56.8,
+        "n": 2052
+      },
+      "90": {
+        "mean_pct": 17.927,
+        "median_pct": 9.367,
+        "positive_rate_pct": 61.4,
+        "n": 2022
+      }
+    },
+    "BULL": {
+      "samples": 241,
+      "7": {
+        "mean_pct": 2.459,
+        "median_pct": 0.789,
+        "positive_rate_pct": 54.4,
+        "n": 241
+      },
+      "30": {
+        "mean_pct": 5.63,
+        "median_pct": 0.456,
+        "positive_rate_pct": 51.9,
+        "n": 241
+      },
+      "60": {
+        "mean_pct": 5.038,
+        "median_pct": -0.867,
+        "positive_rate_pct": 48.1,
+        "n": 241
+      },
+      "90": {
+        "mean_pct": -1.776,
+        "median_pct": -8.596,
+        "positive_rate_pct": 34.9,
+        "n": 241
+      }
+    },
+    "DEFENSIVE": {
+      "samples": 112,
+      "7": {
+        "mean_pct": 2.765,
+        "median_pct": 1.451,
+        "positive_rate_pct": 62.5,
+        "n": 112
+      },
+      "30": {
+        "mean_pct": 12.125,
+        "median_pct": 9.162,
+        "positive_rate_pct": 82.1,
+        "n": 112
+      },
+      "60": {
+        "mean_pct": 5.734,
+        "median_pct": 5.735,
+        "positive_rate_pct": 51.4,
+        "n": 105
+      },
+      "90": {
+        "mean_pct": 8.761,
+        "median_pct": -10.281,
+        "positive_rate_pct": 27.6,
+        "n": 105
+      }
+    }
+  },
+  "summary_by_state": {
+    "WAIT_CONFIRM": {
+      "samples": 2105,
+      "7": {
+        "mean_pct": 0.784,
+        "median_pct": 0.423,
+        "positive_rate_pct": 53.0,
+        "n": 2098
+      },
+      "30": {
+        "mean_pct": 4.006,
+        "median_pct": 1.521,
+        "positive_rate_pct": 54.5,
+        "n": 2075
+      },
+      "60": {
+        "mean_pct": 10.171,
+        "median_pct": 5.785,
+        "positive_rate_pct": 56.8,
+        "n": 2052
+      },
+      "90": {
+        "mean_pct": 17.927,
+        "median_pct": 9.367,
+        "positive_rate_pct": 61.4,
+        "n": 2022
+      }
+    },
+    "RIGHT_SIDE_CONFIRM": {
+      "samples": 239,
+      "7": {
+        "mean_pct": 2.492,
+        "median_pct": 0.789,
+        "positive_rate_pct": 54.4,
+        "n": 239
+      },
+      "30": {
+        "mean_pct": 5.689,
+        "median_pct": 0.88,
+        "positive_rate_pct": 52.3,
+        "n": 239
+      },
+      "60": {
+        "mean_pct": 5.064,
+        "median_pct": -0.867,
+        "positive_rate_pct": 48.1,
+        "n": 239
+      },
+      "90": {
+        "mean_pct": -1.646,
+        "median_pct": -8.251,
+        "positive_rate_pct": 35.1,
+        "n": 239
+      }
+    },
+    "CASH_DEFENSE": {
+      "samples": 112,
+      "7": {
+        "mean_pct": 2.765,
+        "median_pct": 1.451,
+        "positive_rate_pct": 62.5,
+        "n": 112
+      },
+      "30": {
+        "mean_pct": 12.125,
+        "median_pct": 9.162,
+        "positive_rate_pct": 82.1,
+        "n": 112
+      },
+      "60": {
+        "mean_pct": 5.734,
+        "median_pct": 5.735,
+        "positive_rate_pct": 51.4,
+        "n": 105
+      },
+      "90": {
+        "mean_pct": 8.761,
+        "median_pct": -10.281,
+        "positive_rate_pct": 27.6,
+        "n": 105
+      }
+    },
+    "EXECUTION": {
+      "samples": 2,
+      "7": {
+        "mean_pct": -1.517,
+        "median_pct": -1.517,
+        "positive_rate_pct": 50.0,
+        "n": 2
+      },
+      "30": {
+        "mean_pct": -1.429,
+        "median_pct": -1.429,
+        "positive_rate_pct": 0.0,
+        "n": 2
+      },
+      "60": {
+        "mean_pct": 1.89,
+        "median_pct": 1.89,
+        "positive_rate_pct": 50.0,
+        "n": 2
+      },
+      "90": {
+        "mean_pct": -17.388,
+        "median_pct": -17.388,
+        "positive_rate_pct": 0.0,
+        "n": 2
+      }
+    }
+  },
+  "state_change_count": 19,
+  "daily_sample_count": 2458,
+  "recent_state_changes": [
+    {
+      "date": "2020-01-01",
+      "price": 7200.85,
+      "mode": "TRANSITION",
+      "state": "WAIT_CONFIRM",
+      "monthly_green_streak": 0,
+      "weekly_alignment": 0.7143,
+      "dow_structure": "LH / LL",
+      "support_low": 6998.84,
+      "support_high": 7154.0,
+      "near_support": true,
+      "spring": false,
+      "h4_atr_pct": 0.828,
+      "forward": {
+        "7": 0.11875403598186307,
+        "30": 0.2988591624599872,
+        "60": 0.18484345598089091,
+        "90": -0.1097662081559817
+      }
+    },
+    {
+      "date": "2020-12-31",
+      "price": 28923.63,
+      "mode": "BULL",
+      "state": "RIGHT_SIDE_CONFIRM",
+      "monthly_green_streak": 3,
+      "weekly_alignment": 1.0,
+      "dow_structure": "HH / HL",
+      "support_low": 21253.64,
+      "support_high": 22376.36,
+      "near_support": false,
+      "spring": false,
+      "h4_atr_pct": 2.758,
+      "forward": {
+        "7": 0.3633240364366437,
+        "30": 0.18459819877380523,
+        "60": 0.7144124025926206,
+        "90": 1.0308844360130456
+      }
+    },
+    {
+      "date": "2021-04-30",
+      "price": 57694.27,
+      "mode": "TRANSITION",
+      "state": "WAIT_CONFIRM",
+      "monthly_green_streak": 0,
+      "weekly_alignment": 1.0,
+      "dow_structure": "HH / HL",
+      "support_low": 45509.06,
+      "support_high": 48350.94,
+      "near_support": false,
+      "spring": false,
+      "h4_atr_pct": 2.334,
+      "forward": {
+        "7": -0.006578122922778928,
+        "30": -0.38223899877752165,
+        "60": -0.3775511848923644,
+        "90": -0.30640460482470777
+      }
+    },
+    {
+      "date": "2022-09-11",
+      "price": 21826.87,
+      "mode": "DEFENSIVE",
+      "state": "CASH_DEFENSE",
+      "monthly_green_streak": 0,
+      "weekly_alignment": 0.0,
+      "dow_structure": "LH / LL",
+      "support_low": 18219.33,
+      "support_high": 18802.21,
+      "near_support": false,
+      "spring": false,
+      "h4_atr_pct": 1.441,
+      "forward": {
+        "7": -0.11044597782458043,
+        "30": -0.126764396360999,
+        "60": -0.19360173950731363,
+        "90": -0.21530251474444106
+      }
+    },
+    {
+      "date": "2022-10-16",
+      "price": 19262.98,
+      "mode": "TRANSITION",
+      "state": "WAIT_CONFIRM",
+      "monthly_green_streak": 0,
+      "weekly_alignment": 0.0,
+      "dow_structure": "MIXED",
+      "support_low": 17980.77,
+      "support_high": 18399.23,
+      "near_support": false,
+      "spring": false,
+      "h4_atr_pct": 0.763,
+      "forward": {
+        "7": 0.01595910913057086,
+        "30": -0.12263990306795725,
+        "60": -0.09897949330788902,
+        "90": 0.08783376196206394
+      }
+    },
+    {
+      "date": "2022-12-18",
+      "price": 16738.21,
+      "mode": "DEFENSIVE",
+      "state": "CASH_DEFENSE",
+      "monthly_green_streak": 0,
+      "weekly_alignment": 0.0,
+      "dow_structure": "LH / LL",
+      "support_low": 16710.8,
+      "support_high": 17032.9,
+      "near_support": true,
+      "spring": false,
+      "h4_atr_pct": 0.815,
+      "forward": {
+        "7": 0.005609918862291785,
+        "30": 0.26266846932856036,
+        "60": 0.4050319598093226,
+        "90": 0.6075488358671568
+      }
+    },
+    {
+      "date": "2023-01-15",
+      "price": 20871.5,
+      "mode": "TRANSITION",
+      "state": "WAIT_CONFIRM",
+      "monthly_green_streak": 0,
+      "weekly_alignment": 0.0,
+      "dow_structure": "LH / LL",
+      "support_low": 16150.42,
+      "support_high": 16515.58,
+      "near_support": false,
+      "spring": false,
+      "h4_atr_pct": 2.171,
+      "forward": {
+        "7": 0.0879850513858611,
+        "30": 0.06364372469635637,
+        "60": 0.19774716718970842,
+        "90": 0.4515051625422226
+      }
+    },
+    {
+      "date": "2024-02-18",
+      "price": 52137.67,
+      "mode": "BULL",
+      "state": "RIGHT_SIDE_CONFIRM",
+      "monthly_green_streak": 5,
+      "weekly_alignment": 1.0,
+      "dow_structure": "HH / HL",
+      "support_low": 37975.9,
+      "support_high": 39134.1,
+      "near_support": false,
+      "spring": false,
+      "h4_atr_pct": 1.04,
+      "forward": {
+        "7": -0.007841163596301826,
+        "30": 0.18795872542827485,
+        "60": 0.21735551281827514,
+        "90": 0.28343288067917105
+      }
+    },
+    {
+      "date": "2024-04-13",
+      "price": 63924.51,
+      "mode": "BULL",
+      "state": "EXECUTION",
+      "monthly_green_streak": 7,
+      "weekly_alignment": 1.0,
+      "dow_structure": "HH / HL",
+      "support_low": 63256.47,
+      "support_high": 65729.67,
+      "near_support": true,
+      "spring": true,
+      "h4_atr_pct": 2.659,
+      "forward": {
+        "7": 0.01589499864762356,
+        "30": -0.015399883393709235,
+        "60": 0.06788444682642081,
+        "90": -0.09441464627574003
+      }
+    },
+    {
+      "date": "2024-04-14",
+      "price": 65661.84,
+      "mode": "BULL",
+      "state": "RIGHT_SIDE_CONFIRM",
+      "monthly_green_streak": 7,
+      "weekly_alignment": 1.0,
+      "dow_structure": "HH / HL",
+      "support_low": 63208.9,
+      "support_high": 65777.24,
+      "near_support": true,
+      "spring": false,
+      "h4_atr_pct": 3.136,
+      "forward": {
+        "7": -0.010975781367077109,
+        "30": -0.06220279541359175,
+        "60": 0.016922614413485748,
+        "90": -0.09834966549825597
+      }
+    },
+    {
+      "date": "2024-04-30",
+      "price": 60672.0,
+      "mode": "TRANSITION",
+      "state": "WAIT_CONFIRM",
+      "monthly_green_streak": 0,
+      "weekly_alignment": 1.0,
+      "dow_structure": "HH / HL",
+      "support_low": 58586.55,
+      "support_high": 60613.47,
+      "near_support": true,
+      "spring": false,
+      "h4_atr_pct": 1.943,
+      "forward": {
+        "7": 0.027031909282700495,
+        "30": 0.1265850804324895,
+        "60": 0.005186577004219428,
+        "90": 0.10074976925105483
+      }
+    },
+    {
+      "date": "2025-07-13",
+      "price": 119086.64,
+      "mode": "BULL",
+      "state": "RIGHT_SIDE_CONFIRM",
+      "monthly_green_streak": 3,
+      "weekly_alignment": 1.0,
+      "dow_structure": "HH / HL",
+      "support_low": 106497.34,
+      "support_high": 108361.8,
+      "near_support": false,
+      "spring": false,
+      "h4_atr_pct": 0.685,
+      "forward": {
+        "7": -0.015295754418799712,
+        "30": 0.008795613009150438,
+        "60": -0.03026326042954941,
+        "90": -0.07089157944165703
+      }
+    },
+    {
+      "date": "2025-08-24",
+      "price": 113493.59,
+      "mode": "BULL",
+      "state": "EXECUTION",
+      "monthly_green_streak": 4,
+      "weekly_alignment": 1.0,
+      "dow_structure": "HH / HL",
+      "support_low": 110716.18,
+      "support_high": 113123.82,
+      "near_support": true,
+      "spring": true,
+      "h4_atr_pct": 0.942,
+      "forward": {
+        "7": -0.046233800516839674,
+        "30": -0.013170699772559802,
+        "60": -0.030093417610633333,
+        "90": -0.2533521937230111
+      }
+    },
+    {
+      "date": "2025-08-25",
+      "price": 110111.98,
+      "mode": "BULL",
+      "state": "RIGHT_SIDE_CONFIRM",
+      "monthly_green_streak": 4,
+      "weekly_alignment": 1.0,
+      "dow_structure": "HH / HL",
+      "support_low": 110713.48,
+      "support_high": 113126.52,
+      "near_support": true,
+      "spring": false,
+      "h4_atr_pct": 1.278,
+      "forward": {
+        "7": -0.007942460030234688,
+        "30": 0.029016097975896882,
+        "60": 0.008109108563845613,
+        "90": -0.21143911861361497
+      }
+    },
+    {
+      "date": "2025-08-31",
+      "price": 108246.35,
+      "mode": "TRANSITION",
+      "state": "WAIT_CONFIRM",
+      "monthly_green_streak": 0,
+      "weekly_alignment": 1.0,
+      "dow_structure": "HH / HL",
+      "support_low": 110762.66,
+      "support_high": 113077.34,
+      "near_support": false,
+      "spring": false,
+      "h4_atr_pct": 0.666,
+      "forward": {
+        "7": 0.026707505611043514,
+        "30": 0.05360531786984035,
+        "60": 0.0007069984345893232,
+        "90": -0.16115009882550313
+      }
+    },
+    {
+      "date": "2026-03-08",
+      "price": 65971.2,
+      "mode": "DEFENSIVE",
+      "state": "CASH_DEFENSE",
+      "monthly_green_streak": 0,
+      "weekly_alignment": 0.1429,
+      "dow_structure": "LH / LL",
+      "support_low": 61747.09,
+      "support_high": 64312.91,
+      "near_support": true,
+      "spring": false,
+      "h4_atr_pct": 1.251,
+      "forward": {
+        "7": 0.10374284536282508,
+        "30": 0.09023664871944126,
+        "60": 0.21274131742336055,
+        "90": -0.0771030389018238
+      }
+    },
+    {
+      "date": "2026-04-19",
+      "price": 73801.79,
+      "mode": "TRANSITION",
+      "state": "WAIT_CONFIRM",
+      "monthly_green_streak": 1,
+      "weekly_alignment": 0.0,
+      "dow_structure": "MIXED",
+      "support_low": 64792.29,
+      "support_high": 66631.95,
+      "near_support": false,
+      "spring": false,
+      "h4_atr_pct": 1.085,
+      "forward": {
+        "7": 0.06579461013073007,
+        "30": 0.04109073777207861,
+        "60": -0.14693112457028468,
+        "90": -0.12150884145221941
+      }
+    },
+    {
+      "date": "2026-08-16",
+      "price": 62900.0,
+      "mode": "DEFENSIVE",
+      "state": "CASH_DEFENSE",
+      "monthly_green_streak": 1,
+      "weekly_alignment": 0.0,
+      "dow_structure": "LH / LL",
+      "support_low": 61908.98,
+      "support_high": 62641.02,
+      "near_support": true,
+      "spring": false,
+      "h4_atr_pct": 0.313,
+      "forward": {
+        "7": 0.2358346581875994,
+        "30": 0.2026149443561207,
+        "60": null,
+        "90": null
+      }
+    },
+    {
+      "date": "2026-08-23",
+      "price": 77734.0,
+      "mode": "TRANSITION",
+      "state": "WAIT_CONFIRM",
+      "monthly_green_streak": 1,
+      "weekly_alignment": 0.0,
+      "dow_structure": "LH / LL",
+      "support_low": 61739.85,
+      "support_high": 63330.63,
+      "near_support": false,
+      "spring": false,
+      "h4_atr_pct": 1.363,
+      "forward": {
+        "7": -0.0006689479507037133,
+        "30": 0.10901999125221917,
+        "60": null,
+        "90": null
+      }
+    }
+  ]
 }
