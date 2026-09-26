@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-09-26T17:07:44.860015+00:00",
+  "generated_at": "2026-09-26T19:49:02.380718+00:00",
   "market": {
     "symbol": "BTCUSDT",
-    "last_price": 84088.0,
-    "change_24h_pct": 0.268
+    "last_price": 84024.01,
+    "change_24h_pct": -0.005
   }
 }
